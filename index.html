@@ -1859,5 +1859,16 @@ window.addEventListener('offline', updateStatus);
 // Alert badge schedule
 scheduleDailyCheck();
 </script>
+
+<!-- Registro do Service Worker para funcionar como APP nativo -->
+<script>
+  if ('serviceWorker' in navigator) {
+    window.addEventListener('load', () => {
+      navigator.serviceWorker.register('./service-worker.js')
+        .then(reg => console.log('✅ Service Worker registrado:', reg.scope))
+        .catch(err => console.warn('⚠️ Service Worker falhou:', err));
+    });
+  }
+</script>
 </body>
 </html>
