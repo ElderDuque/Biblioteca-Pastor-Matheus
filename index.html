@@ -1,0 +1,1861 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<meta name="theme-color" content="#1a2a6e">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Biblioteca">
+<meta name="description" content="Organize e controle sua biblioteca e empréstimos">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Biblioteca do Pastor Matheus</title>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  :root{
+    --bg:#0e1428;--bg2:#111830;--bg3:rgba(255,255,255,0.04);
+    --gold:#4A7ACC;--gold2:rgba(74,122,204,0.18);--gold3:rgba(74,122,204,0.08);
+    --text:#e8dcc8;--muted:#5a6a8a;--sub:#a0b4d0;
+    --red:#8B4A4A;--green:#6B8E6B;--blue:#4A7A9B;
+    --safe-top:env(safe-area-inset-top,0px);
+    --safe-bot:env(safe-area-inset-bottom,0px);
+  }
+  html,body{height:100%;background:var(--bg);color:var(--text);font-family:'Georgia','Times New Roman',serif;overscroll-behavior:none}
+  body{display:flex;flex-direction:column;overflow:hidden}
+
+  /* INSTALL BANNER */
+  #install-banner{
+    display:none;position:fixed;top:0;left:0;right:0;z-index:200;
+    background:linear-gradient(135deg,#2a1f0e,#0e1428);
+    border-bottom:2px solid var(--gold);
+    padding:12px 16px 12px calc(16px + var(--safe-top));
+    padding-top:calc(12px + var(--safe-top));
+    box-shadow:0 4px 20px rgba(0,0,0,0.6);
+    animation:slideDown 0.4s ease;
+  }
+  #install-banner.show{display:flex;align-items:center;gap:12px}
+  @keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
+  .banner-icon{font-size:32px;flex-shrink:0}
+  .banner-text{flex:1}
+  .banner-title{font-size:14px;font-weight:bold;color:var(--gold)}
+  .banner-sub{font-size:11px;color:var(--muted);margin-top:2px}
+  .banner-btn{padding:8px 16px;border-radius:6px;border:none;cursor:pointer;font-family:inherit;font-size:12px;font-weight:bold}
+  .banner-install{background:var(--gold);color:var(--bg)}
+  .banner-close{background:transparent;color:var(--muted);font-size:18px;padding:6px 10px}
+
+  /* iOS INSTALL HINT */
+  #ios-hint{
+    display:none;position:fixed;bottom:80px;left:16px;right:16px;z-index:200;
+    background:#2a1f0e;border:1px solid var(--gold);border-radius:12px;
+    padding:14px 16px;box-shadow:0 8px 30px rgba(0,0,0,0.7);
+    animation:fadeIn 0.3s ease;
+  }
+  #ios-hint.show{display:block}
+  @keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+  .ios-hint-title{font-size:13px;font-weight:bold;color:var(--gold);margin-bottom:6px}
+  .ios-hint-steps{font-size:12px;color:var(--sub);line-height:1.8}
+  .ios-hint-close{position:absolute;top:10px;right:12px;background:none;border:none;color:var(--muted);font-size:18px;cursor:pointer}
+  .ios-arrow{position:absolute;bottom:-10px;left:50%;transform:translateX(-50%);width:0;height:0;border-left:10px solid transparent;border-right:10px solid transparent;border-top:10px solid var(--gold)}
+
+  /* HEADER */
+  #header{
+    flex-shrink:0;
+    padding:calc(12px + var(--safe-top)) 16px 0;
+    background:rgba(18,14,9,0.98);
+    border-bottom:1px solid rgba(74,122,204,0.2);
+    backdrop-filter:blur(12px);
+    position:sticky;top:0;z-index:50;
+  }
+  .header-top{display:flex;align-items:center;justify-content:space-between;padding-bottom:12px}
+  .header-brand{display:flex;align-items:center;gap:10px}
+  .brand-icon{font-size:24px}
+  .brand-title{font-size:17px;font-weight:bold;color:var(--gold);letter-spacing:0.03em}
+  .brand-sub{font-size:10px;color:var(--muted);letter-spacing:0.08em;text-transform:uppercase;margin-top:1px}
+  .status-dot{display:inline-flex;align-items:center;gap:4px;font-size:10px;font-weight:bold;letter-spacing:0.05em;text-transform:uppercase;padding:2px 8px;border-radius:20px;margin-top:3px}
+  .status-dot::before{content:'';width:7px;height:7px;border-radius:50%;flex-shrink:0}
+  .status-online{color:#6fcf97;background:rgba(111,207,151,0.12);}
+  .status-online::before{background:#6fcf97;box-shadow:0 0 6px #6fcf97;animation:blink 2s infinite}
+  .status-offline{color:#e05555;background:rgba(224,85,85,0.12);}
+  .status-offline::before{background:#e05555;}
+  @keyframes blink{0%,100%{opacity:1}50%{opacity:0.4}}
+  .add-btn{padding:8px 16px;background:var(--gold);color:var(--bg);border:none;border-radius:6px;font-family:inherit;font-weight:bold;font-size:13px;cursor:pointer;white-space:nowrap}
+
+  /* TABS */
+  .tabs{display:flex;gap:0;overflow-x:auto;scrollbar-width:none;border-top:1px solid rgba(74,122,204,0.12)}
+  .tabs::-webkit-scrollbar{display:none}
+  .tab{flex:1;min-width:60px;padding:10px 8px;text-align:center;font-size:11px;color:var(--muted);border:none;background:none;cursor:pointer;font-family:inherit;border-bottom:2px solid transparent;transition:all 0.2s;white-space:nowrap}
+  .tab.active{color:var(--gold);border-bottom-color:var(--gold)}
+
+  /* MAIN */
+  #main{flex:1;overflow-y:auto;padding:16px;padding-bottom:calc(16px + var(--safe-bot));-webkit-overflow-scrolling:touch}
+
+  /* FILTERS */
+  .filters{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+  .filter-input{flex:1;min-width:150px;background:rgba(255,255,255,0.06);border:1px solid rgba(74,122,204,0.22);color:var(--text);padding:9px 12px;border-radius:6px;font-family:inherit;font-size:13px;outline:none}
+  .filter-input::placeholder{color:var(--muted)}
+  .filter-select{background:rgba(255,255,255,0.06);border:1px solid rgba(74,122,204,0.22);color:var(--text);padding:9px 10px;border-radius:6px;font-family:inherit;font-size:12px;outline:none;cursor:pointer}
+
+  /* SHELF GRID */
+  .shelf-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(140px,1fr));gap:14px}
+  .book-card{background:var(--bg3);border:1px solid rgba(74,122,204,0.14);border-radius:8px;overflow:hidden;cursor:pointer;transition:all 0.2s;position:relative}
+  .book-card.expanded{border-color:var(--gold);box-shadow:0 6px 24px rgba(74,122,204,0.15);transform:translateY(-2px)}
+  .card-stripe{height:4px}
+  .card-cover{width:100%;aspect-ratio:3/4;object-fit:cover;display:block}
+  .card-cover-placeholder{width:100%;aspect-ratio:3/4;display:flex;align-items:center;justify-content:center;padding:10px;font-size:11px;color:rgba(255,255,255,0.6);font-style:italic;text-align:center;line-height:1.4}
+  .card-body{padding:10px}
+  .card-title{font-size:12px;font-weight:bold;color:var(--text);line-height:1.3;margin-bottom:3px}
+  .card-author{font-size:10px;color:var(--muted);margin-bottom:6px}
+  .card-tag{display:inline-block;font-size:9px;padding:2px 7px;border-radius:20px}
+  .loan-badge{position:absolute;top:8px;right:6px;background:var(--red);color:#fff;font-size:8px;padding:2px 5px;border-radius:3px;font-weight:bold;letter-spacing:0.04em}
+  .card-expanded{border-top:1px solid rgba(74,122,204,0.15);padding:10px;margin-top:6px}
+  .loan-info{background:rgba(139,74,74,0.12);border-radius:4px;padding:7px 8px;font-size:10px;color:#c47a7a;line-height:1.6;margin-bottom:8px}
+  .card-notes{font-size:10px;color:var(--sub);font-style:italic;line-height:1.5;margin-bottom:8px}
+  .card-meta{font-size:10px;color:var(--muted);margin-bottom:8px}
+  .card-actions{display:flex;gap:5px;flex-wrap:wrap}
+
+  /* LIST VIEW */
+  .list-item{background:var(--bg3);border:1px solid rgba(74,122,204,0.12);border-radius:8px;padding:12px 14px;display:flex;align-items:center;gap:12px;margin-bottom:8px;border-left-width:4px}
+  .list-cover{width:42px;height:56px;border-radius:3px;object-fit:cover;flex-shrink:0;box-shadow:1px 2px 8px rgba(0,0,0,0.4)}
+  .list-cover-ph{width:42px;height:56px;border-radius:3px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:8px;color:rgba(255,255,255,0.5);text-align:center;padding:4px}
+  .list-info{flex:1;min-width:0}
+  .list-title{font-size:14px;font-weight:bold;color:var(--text)}
+  .list-sub{font-size:11px;color:var(--muted);margin-top:2px}
+  .list-loan{font-size:11px;color:#c47a7a;margin-top:3px}
+  .list-actions{display:flex;gap:5px;flex-shrink:0}
+
+  /* LOANS VIEW */
+  .loans-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:18px}
+  .section-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px;margin-top:20px}
+  .loan-card{background:var(--bg3);border:1px solid rgba(74,122,204,0.16);border-radius:8px;padding:14px;margin-bottom:10px;display:flex;gap:12px;align-items:center}
+  .loan-card.overdue{border-color:rgba(196,100,100,0.3)}
+  .loan-card-info{flex:1;min-width:0}
+  .loan-book-title{font-size:14px;font-weight:bold;color:var(--text)}
+  .loan-person{font-size:13px;color:var(--sub);margin-top:3px}
+  .loan-dates{font-size:11px;color:var(--muted);margin-top:3px}
+  .loan-note{font-size:11px;color:var(--muted);font-style:italic;margin-top:2px}
+  .loan-actions{display:flex;flex-direction:column;gap:5px;align-items:flex-end;flex-shrink:0}
+  .overdue-tag{font-size:9px;padding:3px 7px;border-radius:3px;background:rgba(196,100,100,0.15);color:#c47a7a;border:1px solid rgba(196,100,100,0.25);font-weight:bold;white-space:nowrap}
+  .returned-card{background:rgba(255,255,255,0.02);border:1px solid rgba(74,122,204,0.07);border-radius:8px;padding:10px 14px;margin-bottom:8px;display:flex;gap:12px;align-items:center;opacity:0.65}
+
+  /* STATS */
+  .stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:16px}
+  .stat-card{background:var(--bg3);border:1px solid rgba(74,122,204,0.15);border-radius:8px;padding:16px 12px}
+  .stat-icon{font-size:20px;margin-bottom:6px}
+  .stat-value{font-size:24px;font-weight:bold;color:var(--gold)}
+  .stat-label{font-size:10px;color:var(--muted);margin-top:3px}
+  .bar-wrap{background:rgba(255,255,255,0.06);border-radius:4px;height:7px;overflow:hidden;margin-top:5px}
+  .bar-fill{height:100%;border-radius:4px;transition:width 0.6s}
+
+  /* BUTTONS */
+  .btn{padding:7px 13px;border-radius:5px;border:none;cursor:pointer;font-family:inherit;font-size:12px;transition:all 0.15s;white-space:nowrap}
+  .btn-gold{background:rgba(74,122,204,0.2);color:var(--gold);border:1px solid rgba(74,122,204,0.3)}
+  .btn-green{background:rgba(107,142,107,0.2);color:var(--green);border:1px solid rgba(107,142,107,0.3)}
+  .btn-blue{background:rgba(74,122,155,0.2);color:var(--blue);border:1px solid rgba(74,122,155,0.3)}
+  .btn-red{background:rgba(139,74,74,0.2);color:#c47a7a;border:1px solid rgba(139,74,74,0.3)}
+  .btn-solid-gold{background:#4A7ACC;color:var(--bg);font-weight:bold}
+  .btn-solid-green{background:var(--green);color:#fff;font-weight:bold}
+
+  /* MODAL */
+  .modal-overlay{display:none;position:fixed;inset:0;z-index:150;background:rgba(0,0,0,0.8);backdrop-filter:blur(4px);align-items:flex-end;justify-content:center}
+  .modal-overlay.open{display:flex}
+  .modal{background:var(--bg2);border:1px solid rgba(74,122,204,0.28);border-radius:16px 16px 0 0;width:100%;max-width:560px;max-height:92vh;overflow-y:auto;padding:20px 16px calc(20px + var(--safe-bot));animation:slideUp 0.3s ease}
+  @keyframes slideUp{from{transform:translateY(100%)}to{transform:translateY(0)}}
+  .modal-handle{width:40px;height:4px;background:rgba(255,255,255,0.15);border-radius:2px;margin:0 auto 16px}
+  .modal-title{font-size:17px;font-weight:bold;color:var(--gold);margin-bottom:18px}
+  .form-group{margin-bottom:14px}
+  .form-label{font-size:10px;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;display:block;margin-bottom:5px}
+  .form-input{width:100%;background:rgba(255,255,255,0.06);border:1px solid rgba(74,122,204,0.22);color:var(--text);padding:10px 12px;border-radius:6px;font-family:inherit;font-size:13px;outline:none}
+  .form-input:focus{border-color:rgba(74,122,204,0.5)}
+  .form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .form-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:20px}
+  textarea.form-input{resize:vertical;min-height:70px}
+
+  /* COVER UPLOAD */
+  .cover-upload-area{display:flex;align-items:center;gap:14px}
+  .cover-preview{width:64px;height:85px;border-radius:4px;overflow:hidden;border:1px solid rgba(74,122,204,0.3);cursor:pointer;flex-shrink:0}
+  .cover-preview img{width:100%;height:100%;object-fit:cover}
+  .cover-placeholder{width:100%;height:100%;background:rgba(74,122,204,0.08);display:flex;align-items:center;justify-content:center;font-size:24px}
+  .cover-btns{display:flex;flex-direction:column;gap:6px}
+
+  /* AI SCAN */
+  .ai-scan-area{background:rgba(74,122,155,0.08);border:1px dashed rgba(74,122,155,0.3);border-radius:8px;padding:14px;margin-bottom:14px}
+  .ai-scan-title{font-size:12px;color:var(--blue);font-weight:bold;margin-bottom:6px}
+  .ai-scan-sub{font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.5}
+  .ai-scan-btns{display:flex;gap:8px;flex-wrap:wrap}
+  .ai-result{background:rgba(107,142,107,0.1);border:1px solid rgba(107,142,107,0.25);border-radius:6px;padding:10px;margin-top:10px;font-size:12px;color:var(--sub);line-height:1.6}
+  .ai-loading{text-align:center;padding:12px;color:var(--muted);font-size:12px;font-style:italic}
+
+  /* STARS */
+  .stars{display:flex;gap:3px}
+  .star{font-size:22px;cursor:pointer;color:#3a3228;transition:transform 0.1s;user-select:none}
+  .star.filled{color:var(--gold)}
+  .star-sm{font-size:12px;cursor:default}
+
+  /* EMPTY */
+  .empty{text-align:center;color:var(--muted);padding:50px 20px;grid-column:1/-1}
+  .empty-icon{font-size:44px;margin-bottom:10px}
+
+  /* SCROLLBAR */
+  #main::-webkit-scrollbar{width:4px}
+  #main::-webkit-scrollbar-track{background:transparent}
+  #main::-webkit-scrollbar-thumb{background:rgba(74,122,204,0.2);border-radius:2px}
+
+  @media(max-width:400px){
+    .shelf-grid{grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px}
+    .stats-grid{grid-template-columns:repeat(2,1fr)}
+  }
+
+  /* ALERT PANEL */
+  #alert-panel{
+    display:none;position:fixed;inset:0;z-index:180;
+    background:rgba(0,0,0,0.85);backdrop-filter:blur(6px);
+    align-items:flex-end;justify-content:center;
+  }
+  #alert-panel.open{display:flex}
+  .alert-sheet{
+    background:#0d1326;border:1px solid rgba(74,122,204,0.3);
+    border-radius:16px 16px 0 0;width:100%;max-width:560px;
+    max-height:85vh;overflow-y:auto;
+    padding:20px 16px calc(20px + var(--safe-bot));
+    animation:slideUp 0.3s ease;
+  }
+  .alert-header{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px}
+  .alert-title{font-size:17px;font-weight:bold;color:#e05555}
+  .alert-close{background:none;border:none;color:var(--muted);font-size:22px;cursor:pointer;padding:4px 8px}
+  .alert-item{
+    background:rgba(255,255,255,0.04);border-radius:8px;padding:14px;margin-bottom:10px;
+    border-left:4px solid #e05555;
+  }
+  .alert-item.warning{border-left-color:#d48c2a}
+  .alert-item.info{border-left-color:#4A7ACC}
+  .alert-item-title{font-size:13px;font-weight:bold;color:var(--text);margin-bottom:4px}
+  .alert-item-sub{font-size:12px;color:var(--sub);line-height:1.6}
+  .alert-item-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .alert-badge{
+    position:absolute;top:-4px;right:-4px;
+    background:#e05555;color:#fff;
+    font-size:10px;font-weight:bold;
+    width:18px;height:18px;border-radius:50%;
+    display:flex;align-items:center;justify-content:center;
+    border:2px solid #0d1326;
+  }
+  .notif-btn-wrap{position:relative;display:inline-block}
+
+  /* NOTIFICATION TOAST */
+  #toast{
+    position:fixed;top:calc(16px + var(--safe-top));left:50%;transform:translateX(-50%) translateY(-120px);
+    z-index:250;background:#1a2a5a;border:1px solid rgba(74,122,204,0.4);
+    border-radius:10px;padding:12px 18px;font-size:13px;color:var(--text);
+    white-space:nowrap;box-shadow:0 4px 20px rgba(0,0,0,0.5);
+    transition:transform 0.35s ease;pointer-events:none;
+  }
+  #toast.show{transform:translateX(-50%) translateY(0)}
+
+  /* SPLASH SCREEN */
+  #splash {
+    position:fixed;inset:0;z-index:999;
+    background:linear-gradient(160deg, #060d1f 0%, #0e1428 40%, #111e45 100%);
+    display:flex;flex-direction:column;align-items:center;justify-content:center;
+    gap:0;
+    transition:opacity 0.6s ease, transform 0.6s ease;
+  }
+  #splash.hide {
+    opacity:0;transform:scale(1.05);pointer-events:none;
+  }
+  .splash-icon {
+    width:110px;height:110px;
+    background:linear-gradient(135deg,#0d1a4a,#1a2e6a);
+    border-radius:28px;
+    display:flex;align-items:center;justify-content:center;
+    box-shadow:0 8px 40px rgba(74,122,204,0.35), 0 0 0 1px rgba(74,122,204,0.2);
+    animation:splashPop 0.5s cubic-bezier(0.34,1.56,0.64,1) 0.2s both;
+  }
+  .splash-icon img { width:80px;height:80px;object-fit:contain; }
+  .splash-title {
+    font-size:22px;font-weight:bold;color:var(--gold);
+    margin-top:22px;letter-spacing:0.04em;
+    animation:splashFadeUp 0.5s ease 0.4s both;
+  }
+  .splash-sub {
+    font-size:13px;color:var(--muted);margin-top:6px;
+    animation:splashFadeUp 0.5s ease 0.5s both;
+  }
+  .splash-bar-wrap {
+    width:160px;height:3px;background:rgba(74,122,204,0.15);
+    border-radius:10px;margin-top:36px;overflow:hidden;
+    animation:splashFadeUp 0.5s ease 0.6s both;
+  }
+  .splash-bar {
+    height:100%;width:0%;background:var(--gold);border-radius:10px;
+    transition:width 0.1s linear;
+  }
+  @keyframes splashPop {
+    from{opacity:0;transform:scale(0.6)}
+    to{opacity:1;transform:scale(1)}
+  }
+  @keyframes splashFadeUp {
+    from{opacity:0;transform:translateY(12px)}
+    to{opacity:1;transform:translateY(0)}
+  }
+</style>
+</head>
+<body>
+
+<!-- SPLASH SCREEN -->
+<div id="splash">
+  <div class="splash-icon">
+    <img src="icon-192.png" alt="Biblioteca">
+  </div>
+  <div class="splash-title">Biblioteca do Pastor Matheus</div>
+  <div class="splash-sub">Carregando sua biblioteca...</div>
+  <div class="splash-bar-wrap">
+    <div class="splash-bar" id="splash-bar"></div>
+  </div>
+</div>
+
+<!-- TOAST -->
+<div id="toast">📋 Mensagem copiada!</div>
+
+<!-- ALERT PANEL -->
+<div id="alert-panel">
+  <div class="alert-sheet">
+    <div class="alert-header">
+      <div class="alert-title">🔔 Alertas de Empréstimo</div>
+      <button class="alert-close" onclick="closeAlertPanel()">✕</button>
+    </div>
+    <div id="alert-list"></div>
+  </div>
+</div>
+
+<!-- INSTALL BANNER (Android/Desktop) -->
+<div id="install-banner">
+  <div class="banner-icon">⛪</div>
+  <div class="banner-text">
+    <div class="banner-title">Instalar Biblioteca do Pastor Matheus</div>
+    <div class="banner-sub">Adicione à tela inicial para acesso rápido</div>
+  </div>
+  <button class="banner-btn banner-install" id="btn-install">Instalar</button>
+  <button class="banner-btn banner-close" id="btn-banner-close">✕</button>
+</div>
+
+<!-- iOS HINT -->
+<div id="ios-hint">
+  <button class="ios-hint-close" id="btn-ios-close">✕</button>
+  <div class="ios-hint-title">📱 Instalar no iPhone/iPad</div>
+  <div class="ios-hint-steps">
+    1. Toque em <strong>Compartilhar</strong> <span style="background:#3a3228;padding:1px 5px;border-radius:3px">⬆</span> no Safari<br>
+    2. Role para baixo e toque em <strong>"Adicionar à Tela Inicial"</strong><br>
+    3. Confirme tocando em <strong>Adicionar</strong>
+  </div>
+  <div class="ios-arrow"></div>
+</div>
+
+<!-- HEADER -->
+<div id="header">
+  <div class="header-top">
+    <div class="header-brand">
+      <span class="brand-icon">⛪</span>
+      <div>
+        <div class="brand-title">Biblioteca do Pastor Matheus</div>
+        <div class="brand-sub" id="header-sub">Carregando...</div>
+        <div class="status-dot status-online" id="status-indicator">Online</div>
+      </div>
+    </div>
+    <div style="display:flex;gap:8px;align-items:center">
+      <button id="install-btn" onclick="triggerInstall()" style="display:none;background:rgba(74,122,204,0.15);border:1px solid rgba(74,122,204,0.35);color:var(--gold);padding:7px 12px;border-radius:8px;font-family:inherit;font-size:12px;cursor:pointer;white-space:nowrap">📲 Instalar App</button>
+      <div class="notif-btn-wrap">
+        <button id="notif-btn" onclick="openAlertPanel()" style="background:rgba(74,122,204,0.12);border:1px solid rgba(74,122,204,0.25);color:var(--gold);width:38px;height:38px;border-radius:8px;font-size:18px;cursor:pointer;display:flex;align-items:center;justify-content:center">🔔</button>
+        <div class="alert-badge" id="alert-badge" style="display:none">0</div>
+      </div>
+      <button class="add-btn" onclick="openBookModal()">+ Livro</button>
+    </div>
+  </div>
+  <div class="tabs">
+    <button class="tab active" data-tab="home" onclick="switchTab('home')">🏠 Início</button>
+    <button class="tab" data-tab="shelf" onclick="switchTab('shelf')">🗂 Estante</button>
+    <button class="tab" data-tab="list" onclick="switchTab('list')">☰ Lista</button>
+    <button class="tab" data-tab="loans" onclick="switchTab('loans')" id="loans-tab">🤝 Empréstimos</button>
+    <button class="tab" data-tab="stats" onclick="switchTab('stats')">📊 Stats</button>
+  </div>
+</div>
+
+<!-- MAIN CONTENT -->
+<div id="main">
+  <div id="view-home"></div>
+  <div id="view-shelf" style="display:none"></div>
+  <div id="view-list" style="display:none"></div>
+  <div id="view-loans" style="display:none"></div>
+  <div id="view-stats" style="display:none"></div>
+</div>
+
+<!-- BOOK MODAL -->
+<div class="modal-overlay" id="book-modal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="book-modal-title">📖 Adicionar Livro</div>
+
+    <!-- AI SCAN -->
+    <div class="ai-scan-area">
+      <div class="ai-scan-title">🤖 Reconhecimento por IA</div>
+      <div class="ai-scan-sub">Tire uma foto ou envie a imagem da capa — a IA preenche o título e autor automaticamente!</div>
+      <div class="ai-scan-btns">
+        <button class="btn btn-blue" onclick="triggerCameraCapture()">📷 Câmera</button>
+        <button class="btn btn-blue" onclick="triggerGalleryForAI()">🖼 Galeria</button>
+      </div>
+      <div id="ai-result"></div>
+      <input type="file" id="ai-camera-input" accept="image/*" capture="environment" style="display:none" onchange="processAIImage(this)">
+      <input type="file" id="ai-gallery-input" accept="image/*" style="display:none" onchange="processAIImage(this)">
+    </div>
+
+    <!-- COVER UPLOAD -->
+    <div class="form-group">
+      <label class="form-label">Foto da Capa</label>
+      <div class="cover-upload-area">
+        <div class="cover-preview" onclick="triggerCoverUpload()">
+          <div id="cover-preview-inner">
+            <div class="cover-placeholder">📷</div>
+          </div>
+        </div>
+        <div class="cover-btns">
+          <button class="btn btn-gold" onclick="triggerCoverUpload()">Escolher foto</button>
+          <button class="btn btn-red" onclick="removeCover()" id="remove-cover-btn" style="display:none">Remover</button>
+        </div>
+        <input type="file" id="cover-input" accept="image/*" style="display:none" onchange="handleCoverUpload(this)">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Título *</label>
+      <input class="form-input" id="f-title" placeholder="Ex: Dom Casmurro">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Autor *</label>
+      <input class="form-input" id="f-author" placeholder="Ex: Machado de Assis">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Gênero</label>
+        <select class="form-input" id="f-genre">
+          <option>Teologia</option><option>Romance</option><option>Ficção Científica</option>
+          <option>Fantasia</option><option>Terror</option><option>Mistério</option>
+          <option>Biografia</option><option>História</option><option>Autoajuda</option>
+          <option>Técnico</option><option>Poesia</option><option>Outro</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Status</label>
+        <select class="form-input" id="f-status">
+          <option>Quero Ler</option><option>Lendo</option><option>Lido</option><option>Pausado</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Ano</label>
+        <input class="form-input" id="f-year" type="number" placeholder="2024">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Estante</label>
+        <input class="form-input" id="f-shelf" placeholder="Ex: Estante A" oninput="updateShelfPhotoPreview()">
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Prateleira</label>
+        <input class="form-input" id="f-shelf-row" placeholder="Ex: Prateleira 2">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Posição</label>
+        <input class="form-input" id="f-shelf-pos" placeholder="Ex: Posição 3">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">📷 Foto da Estante <span style="font-size:10px;color:var(--muted)">(compartilhada com todos os livros deste local)</span></label>
+      <div id="shelf-photo-preview" style="margin-bottom:8px"></div>
+      <div style="display:flex;gap:8px">
+        <button type="button" class="btn btn-blue" onclick="triggerShelfPhotoUpload()" style="font-size:12px">📷 Foto da estante</button>
+        <button type="button" class="btn btn-red" id="btn-remove-shelf-photo" onclick="removeShelfPhoto()" style="font-size:12px;display:none">🗑 Remover</button>
+      </div>
+      <input type="file" id="shelf-photo-input" accept="image/*" style="display:none" onchange="handleShelfPhotoUpload(this)">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Avaliação</label>
+      <div class="stars" id="star-rating">
+        <span class="star" onclick="setRating(1)">★</span>
+        <span class="star" onclick="setRating(2)">★</span>
+        <span class="star" onclick="setRating(3)">★</span>
+        <span class="star" onclick="setRating(4)">★</span>
+        <span class="star" onclick="setRating(5)">★</span>
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Anotações</label>
+      <textarea class="form-input" id="f-notes" placeholder="Observações, resumo..."></textarea>
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-gold" onclick="closeBookModal()">Cancelar</button>
+      <button class="btn btn-solid-gold" onclick="saveBook()">Salvar</button>
+    </div>
+  </div>
+</div>
+
+<!-- REVIEW MODAL -->
+<div class="modal-overlay" id="review-modal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title">📝 Resenha Pessoal</div>
+    <div id="review-book-info" style="display:flex;gap:12px;align-items:center;background:rgba(74,122,204,0.08);border-radius:8px;padding:12px;margin-bottom:16px"></div>
+    <div class="form-group">
+      <label class="form-label">Suas impressões sobre o livro</label>
+      <textarea class="form-input" id="review-text" placeholder="O que você achou? Pontos marcantes, reflexões, trechos favoritos..." style="min-height:140px"></textarea>
+    </div>
+    <div id="review-date" style="font-size:10px;color:var(--muted);margin-bottom:14px"></div>
+    <div class="form-actions">
+      <button class="btn btn-gold" onclick="closeReviewModal()">Cancelar</button>
+      <button class="btn btn-solid-gold" onclick="saveReview()">Salvar Resenha</button>
+    </div>
+  </div>
+</div>
+
+<!-- LOAN MODAL -->
+<div class="modal-overlay" id="loan-modal">
+  <div class="modal">
+    <div class="modal-handle"></div>
+    <div class="modal-title" id="loan-modal-title">📤 Registrar Empréstimo</div>
+    <div class="form-group">
+      <label class="form-label">Livro *</label>
+      <select class="form-input" id="lf-book"></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Quem pegou *</label>
+      <input class="form-input" id="lf-borrower" placeholder="Nome da pessoa">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Telefone / Contato</label>
+      <input class="form-input" id="lf-phone" placeholder="(11) 99999-0000" type="tel">
+    </div>
+    <div class="form-row">
+      <div class="form-group">
+        <label class="form-label">Data do Empréstimo</label>
+        <input class="form-input" id="lf-date" type="date">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Previsão de Devolução</label>
+        <input class="form-input" id="lf-return" type="date">
+      </div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Observação</label>
+      <input class="form-input" id="lf-notes" placeholder="Ex: Líder de célula, amigo...">
+    </div>
+    <div class="form-actions">
+      <button class="btn btn-gold" onclick="closeLoanModal()">Cancelar</button>
+      <button class="btn btn-solid-green" onclick="saveLoan()">Registrar</button>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════
+// FIREBASE CONFIG
+// ═══════════════════════════════════════════
+const firebaseConfig = {
+  apiKey: "AIzaSyCgTVc1G-uT-LncaxYWVcUuViPFVKq8Z0Y",
+  authDomain: "biblioteca-pastor-matheus.firebaseapp.com",
+  projectId: "biblioteca-pastor-matheus",
+  storageBucket: "biblioteca-pastor-matheus.firebasestorage.app",
+  messagingSenderId: "310650525758",
+  appId: "1:310650525758:web:4b2d962b2bcedee4c4996f"
+};
+
+firebase.initializeApp(firebaseConfig);
+const db = firebase.firestore();
+
+// ═══════════════════════════════════════════
+// DATA
+// ═══════════════════════════════════════════
+const GENRES = ['Teologia','Romance','Ficção Científica','Fantasia','Terror','Mistério','Biografia','História','Autoajuda','Técnico','Poesia','Outro'];
+const STATUS_COLORS = {'Quero Ler':'#6B8E6B','Lendo':'#4A7ACC','Lido':'#4A7A9B','Pausado':'#8B7355'};
+const BOOK_COLORS = ['#0e2050','#0a1a4a','#152560','#1a2e70','#0d1c55','#162248','#1e2d6a','#0b1840'];
+
+let books = [];
+let loans = [];
+let dbReady = false;
+
+// Show loading state
+document.getElementById('header-sub').textContent = 'Conectando...';
+
+// Splash screen progress animation
+let splashProgress = 0;
+const splashBar = document.getElementById('splash-bar');
+const splashInterval = setInterval(() => {
+  splashProgress = Math.min(splashProgress + (dbReady ? 15 : 2), 90);
+  if (splashBar) splashBar.style.width = splashProgress + '%';
+}, 80);
+
+function hideSplash() {
+  clearInterval(splashInterval);
+  if (splashBar) splashBar.style.width = '100%';
+  setTimeout(() => {
+    const splash = document.getElementById('splash');
+    if (splash) {
+      splash.classList.add('hide');
+      setTimeout(() => splash.remove(), 700);
+    }
+  }, 300);
+}
+const connectionTimeout = setTimeout(() => {
+  if (!dbReady) {
+    hideSplash();
+    document.getElementById('header-sub').innerHTML = '⚠️ Sem conexão — <span style="color:#4A7ACC;cursor:pointer" onclick="location.reload()">tentar novamente</span>';
+    books = []; loans = [];
+    render();
+  }
+}, 8000);
+
+// ═══════════════════════════════════════════
+// MIGRATION: localStorage → Firebase
+// ═══════════════════════════════════════════
+async function migrateLocalData() {
+  const migratedKey = 'firebase_migrated_v1';
+  if (localStorage.getItem(migratedKey)) return; // already done
+
+  const localBooks = JSON.parse(localStorage.getItem('books') || 'null');
+  const localLoans = JSON.parse(localStorage.getItem('loans') || 'null');
+
+  // Only migrate if there's real local data
+  const hasBooks = localBooks && localBooks.length > 0;
+  const hasLoans = localLoans && localLoans.length > 0;
+  if (!hasBooks && !hasLoans) {
+    localStorage.setItem(migratedKey, '1');
+    return;
+  }
+
+  // Show migration banner
+  const banner = document.createElement('div');
+  banner.id = 'migration-banner';
+  banner.innerHTML = `
+    <div style="position:fixed;inset:0;z-index:300;background:rgba(0,0,0,0.85);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:20px">
+      <div style="background:#111830;border:1px solid rgba(74,122,204,0.4);border-radius:16px;padding:28px;max-width:360px;width:100%;text-align:center">
+        <div style="font-size:40px;margin-bottom:12px">☁️</div>
+        <div style="font-size:17px;font-weight:bold;color:#4A7ACC;margin-bottom:8px">Migrando seus dados</div>
+        <div style="font-size:13px;color:#a0b4d0;margin-bottom:20px;line-height:1.6">Encontramos <strong style="color:#e8dcc8">${hasBooks ? localBooks.length + ' livro(s)' : ''}${hasBooks && hasLoans ? ' e ' : ''}${hasLoans ? localLoans.length + ' empréstimo(s)' : ''}</strong> salvos localmente.<br>Enviando para a nuvem...</div>
+        <div id="migration-progress" style="background:rgba(74,122,204,0.15);border-radius:8px;height:8px;overflow:hidden;margin-bottom:12px">
+          <div id="migration-bar" style="height:100%;background:#4A7ACC;width:0%;border-radius:8px;transition:width 0.3s"></div>
+        </div>
+        <div id="migration-status" style="font-size:12px;color:#5a6a8a">Iniciando...</div>
+      </div>
+    </div>`;
+  document.body.appendChild(banner);
+
+  const setProgress = (pct, msg) => {
+    document.getElementById('migration-bar').style.width = pct + '%';
+    document.getElementById('migration-status').textContent = msg;
+  };
+
+  try {
+    // Build a map of old numeric id → new Firebase id for books
+    const bookIdMap = {};
+    const total = (hasBooks ? localBooks.length : 0) + (hasLoans ? localLoans.length : 0);
+    let done = 0;
+
+    if (hasBooks) {
+      for (const book of localBooks) {
+        const { id: oldId, ...data } = book;
+        // Clean up data
+        const clean = {
+          title: data.title || '',
+          author: data.author || '',
+          genre: data.genre || 'Outro',
+          status: data.status || 'Quero Ler',
+          rating: data.rating || 0,
+          notes: data.notes || '',
+          year: data.year || null,
+          shelf: data.shelf || '',
+          cover: data.cover || null,
+          dateAdded: data.dateAdded || new Date().toISOString().split('T')[0],
+        };
+        const ref = await addDoc(collection(db, 'books'), clean);
+        bookIdMap[oldId] = ref.id;
+        done++;
+        setProgress(Math.round(done/total*90), `Livro ${done}/${hasBooks ? localBooks.length : 0}: ${clean.title}`);
+      }
+    }
+
+    if (hasLoans) {
+      for (const loan of localLoans) {
+        const { id: oldId, bookId, ...data } = loan;
+        const newBookId = bookIdMap[bookId] || null;
+        if (!newBookId) continue; // skip if book not found
+        await addDoc(collection(db, 'loans'), {
+          bookId: newBookId,
+          borrower: data.borrower || '',
+          phone: data.phone || '',
+          loanDate: data.loanDate || '',
+          expectedReturn: data.expectedReturn || null,
+          returned: data.returned || false,
+          returnDate: data.returnDate || null,
+          notes: data.notes || '',
+        });
+        done++;
+        setProgress(Math.round(done/total*90), `Empréstimo: ${data.borrower}`);
+      }
+    }
+
+    setProgress(100, '✅ Migração concluída!');
+    localStorage.setItem(migratedKey, '1');
+    localStorage.removeItem('books');
+    localStorage.removeItem('loans');
+
+    setTimeout(() => {
+      banner.remove();
+      showToast('🎉 Dados migrados para a nuvem com sucesso!');
+    }, 1500);
+
+  } catch (err) {
+    console.error('Migration error:', err);
+    document.getElementById('migration-status').textContent = '⚠️ Erro na migração. Tente recarregar.';
+    setTimeout(() => banner.remove(), 3000);
+  }
+}
+
+// Real-time listeners
+let firstLoad = true;
+db.collection('books').onSnapshot(async snap => {
+  clearTimeout(connectionTimeout);
+  books = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+  books.sort((a, b) => (b.dateAdded || '').localeCompare(a.dateAdded || ''));
+  dbReady = true;
+  if (firstLoad) {
+    firstLoad = false;
+    hideSplash();
+    await migrateLocalData();
+  }
+  render();
+  updateAlertBadge();
+}, err => {
+  clearTimeout(connectionTimeout);
+  console.error('Firestore error:', err);
+  document.getElementById('header-sub').innerHTML = '⚠️ Erro de conexão — <span style="color:#4A7ACC;cursor:pointer" onclick="location.reload()">tentar novamente</span>';
+  books = []; render();
+});
+
+db.collection('loans').onSnapshot(snap => {
+  loans = snap.docs.map(d => ({ ...d.data(), id: d.id }));
+  render();
+  updateAlertBadge();
+}, err => {
+  console.error('Loans error:', err);
+});
+
+// Shelf photos collection
+let shelfPhotos = {}; // { shelfName: base64 }
+db.collection('shelfPhotos').onSnapshot(snap => {
+  shelfPhotos = {};
+  snap.docs.forEach(d => { shelfPhotos[d.id] = d.data().photo; });
+  render();
+}, err => console.warn('ShelfPhotos error:', err));
+
+async function saveShelfPhoto(shelfName, photoBase64) {
+  const key = shelfName.trim().replace(/[^a-zA-Z0-9_\-]/g, '_');
+  if (!key) return;
+  await db.collection('shelfPhotos').doc(key).set({ photo: photoBase64, name: shelfName.trim() });
+}
+async function deleteShelfPhoto(shelfName) {
+  const key = shelfName.trim().replace(/[^a-zA-Z0-9_\-]/g, '_');
+  await db.collection('shelfPhotos').doc(key).delete();
+}
+function getShelfPhoto(shelfName) {
+  if (!shelfName) return null;
+  const key = shelfName.trim().replace(/[^a-zA-Z0-9_\-]/g, '_');
+  return shelfPhotos[key] || null;
+}
+
+async function save() {} // no-op
+
+async function addBook(data) {
+  await db.collection('books').add(data);
+}
+async function updateBook(id, data) {
+  await db.collection('books').doc(id).update(data);
+}
+async function removeBook(id) {
+  await db.collection('books').doc(id).delete();
+  const related = loans.filter(l => l.bookId === id);
+  for (const l of related) await db.collection('loans').doc(l.id).delete();
+}
+async function addLoan(data) {
+  await db.collection('loans').add(data);
+}
+async function updateLoan(id, data) {
+  await db.collection('loans').doc(id).update(data);
+}
+async function removeLoan(id) {
+  await db.collection('loans').doc(id).delete();
+}
+
+// ═══════════════════════════════════════════
+// HELPERS
+// ═══════════════════════════════════════════
+const isLoaned = id => loans.some(l => l.bookId===id && !l.returned);
+const activeLoan = id => loans.find(l => l.bookId===id && !l.returned);
+const activeLoans = () => loans.filter(l => !l.returned);
+const overdueLoans = () => activeLoans().filter(l => l.expectedReturn && new Date(l.expectedReturn) < new Date());
+const bookById = id => books.find(b => b.id===id);
+const fmtDate = d => d ? new Date(d+'T12:00:00').toLocaleDateString('pt-BR') : '—';
+const isOverdue = l => !l.returned && l.expectedReturn && new Date(l.expectedReturn) < new Date();
+const bookColor = t => BOOK_COLORS[t ? t.charCodeAt(0) % BOOK_COLORS.length : 0];
+
+function coverHTML(book, w, h) {
+  if (book.cover) return `<img src="${book.cover}" style="width:${w}px;height:${h}px;object-fit:cover;border-radius:3px;box-shadow:1px 2px 8px rgba(0,0,0,0.5)">`;
+  const c = bookColor(book.title);
+  return `<div style="width:${w}px;height:${h}px;border-radius:3px;background:linear-gradient(150deg,${c},${BOOK_COLORS[(BOOK_COLORS.indexOf(c)+1)%BOOK_COLORS.length]});display:flex;align-items:center;justify-content:center;padding:6px;box-shadow:1px 2px 8px rgba(0,0,0,0.5)"><span style="font-size:${Math.round(w*0.08)}px;color:rgba(255,255,255,0.6);text-align:center;line-height:1.3;font-style:italic">${book.title}</span></div>`;
+}
+
+function starsHTML(r, sm=false) {
+  return [1,2,3,4,5].map(i=>`<span style="font-size:${sm?'12px':'14px'};color:${i<=r?'#4A7ACC':'#3a3228'}">★</span>`).join('');
+}
+
+function tagHTML(text, color) {
+  return `<span style="font-size:9px;padding:2px 7px;border-radius:20px;background:${color}22;color:${color};border:1px solid ${color}33">${text}</span>`;
+}
+
+function updateHeader() {
+  const al = activeLoans().length, od = overdueLoans().length;
+  document.getElementById('header-sub').innerHTML = `${books.length} livros · ${al} emprestado${al!==1?'s':''}${od>0?` · <span style="color:#c47a7a">⚠ ${od} em atraso</span>`:''}`;
+  const lt = document.getElementById('loans-tab');
+  lt.textContent = `🤝 Empréstimos${al>0?' ('+al+')':''}`;
+}
+
+// ═══════════════════════════════════════════
+// TABS & STATE
+// ═══════════════════════════════════════════
+let currentTab = 'home';
+let expandedBook = null;
+let search = '', filterStatus = 'Todos', filterGenre = 'Todos', filterAvail = 'Todos', sortBy = 'dateAdded';
+
+function switchTab(tab) {
+  currentTab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab===tab));
+  ['home','shelf','list','loans','stats'].forEach(v => document.getElementById('view-'+v).style.display = v===tab?'block':'none');
+  render();
+}
+
+function render() {
+  updateHeader();
+  if (currentTab==='home') renderHome();
+  else if (currentTab==='shelf') renderShelf();
+  else if (currentTab==='list') renderList();
+  else if (currentTab==='loans') renderLoans();
+  else if (currentTab==='stats') renderStats();
+}
+
+// ═══════════════════════════════════════════
+// HOME VIEW — BUSCA RÁPIDA
+// ═══════════════════════════════════════════
+let homeSearch = '';
+let homeMode = 'item';
+
+function renderHome() {
+  const el = document.getElementById('view-home');
+  const locations = [...new Set(books.map(b => b.shelf).filter(Boolean))].sort();
+  const overdue = overdueLoans();
+
+  el.innerHTML = `
+  <div style="margin-bottom:16px">
+    <div style="display:flex;gap:8px;margin-bottom:12px">
+      <input class="filter-input" style="flex:1;font-size:14px;padding:12px 16px"
+        placeholder="🔍 Digite o título ou local..."
+        value="${homeSearch}"
+        oninput="homeSearch=this.value;renderHome()">
+    </div>
+    <div style="display:flex;gap:8px">
+      <button onclick="homeMode='item';renderHome()" style="flex:1;padding:11px;border-radius:8px;border:2px solid ${homeMode==='item'?'var(--gold)':'rgba(74,122,204,0.2)'};background:${homeMode==='item'?'rgba(74,122,204,0.2)':'transparent'};color:${homeMode==='item'?'var(--gold)':'var(--muted)'};font-family:inherit;font-size:13px;font-weight:bold;cursor:pointer">📚 Por Item</button>
+      <button onclick="homeMode='local';renderHome()" style="flex:1;padding:11px;border-radius:8px;border:2px solid ${homeMode==='local'?'var(--gold)':'rgba(74,122,204,0.2)'};background:${homeMode==='local'?'rgba(74,122,204,0.2)':'transparent'};color:${homeMode==='local'?'var(--gold)':'var(--muted)'};font-family:inherit;font-size:13px;font-weight:bold;cursor:pointer">📍 Por Local</button>
+    </div>
+  </div>
+  ${overdue.length ? `<div style="background:rgba(139,74,74,0.15);border:1px solid rgba(139,74,74,0.3);border-radius:8px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px;cursor:pointer" onclick="switchTab('loans')"><span style="font-size:22px">⚠️</span><div><div style="font-size:13px;font-weight:bold;color:#c47a7a">${overdue.length} empréstimo${overdue.length>1?'s':''} em atraso</div><div style="font-size:11px;color:var(--muted)">Toque para ver detalhes</div></div></div>` : ''}
+  ${homeMode === 'item' ? renderHomeByItem() : renderHomeByLocal(locations)}`;
+}
+
+function renderHomeByItem() {
+  const q = homeSearch.toLowerCase();
+  const filtered = books.filter(b => !q || b.title.toLowerCase().includes(q) || b.author.toLowerCase().includes(q));
+  if (!filtered.length) return `<div class="empty"><div class="empty-icon">🔍</div>Nenhum livro encontrado</div>`;
+  return `<div style="display:flex;flex-direction:column;gap:10px">
+    ${filtered.map(book => {
+      const loaned = isLoaned(book.id);
+      const loan = activeLoan(book.id);
+      const sc = loaned ? '#8B4A4A' : (STATUS_COLORS[book.status]||'#5a6a8a');
+      return `<div style="background:var(--bg3);border:1px solid rgba(74,122,204,0.14);border-left:4px solid ${sc};border-radius:8px;padding:12px;display:flex;gap:12px;align-items:center;cursor:pointer" onclick="switchTab('shelf');setTimeout(()=>{toggleExpand('${book.id}')},200)">
+        ${coverHTML(book, 48, 64)}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:14px;font-weight:bold;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${book.title}</div>
+          <div style="font-size:12px;color:var(--sub);margin-top:2px">${book.author}</div>
+          <div style="display:flex;gap:6px;margin-top:5px;align-items:center;flex-wrap:wrap">
+            ${tagHTML(loaned?'Emprestado':book.status, sc)}
+            ${book.shelf||book.shelfRow||book.shelfPos ? `<span style="font-size:10px;color:var(--muted)">📚 ${[book.shelf,book.shelfRow,book.shelfPos].filter(Boolean).join(' · ')}</span>` : ''}
+          </div>
+          ${loaned && loan ? `<div style="font-size:11px;color:#c47a7a;margin-top:4px">📤 ${loan.borrower}${loan.expectedReturn?' · até '+fmtDate(loan.expectedReturn):''}</div>` : ''}
+        </div>
+        ${book.rating>0?`<div>${starsHTML(book.rating,true)}</div>`:''}
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+function getLocationIcon(loc) {
+  const l = loc.toLowerCase();
+  if (l.includes('sala')) return '🛋️';
+  if (l.includes('quarto')) return '🛏️';
+  if (l.includes('gabinete') || l.includes('pastor')) return '⛪';
+  if (l.includes('estante')) return '📚';
+  if (l.includes('mesa')) return '🪑';
+  if (l.includes('escritório') || l.includes('escritorio')) return '💼';
+  if (l.includes('casa')) return '🏠';
+  if (l.includes('igreja')) return '⛪';
+  return '📍';
+}
+
+function toggleLocation(loc) {
+  const key = loc.replace(/[\s/]/g,'_');
+  const el = document.getElementById('loc-books-'+key);
+  const arrow = document.getElementById('loc-arrow-'+key);
+  if (!el) return;
+  const hidden = el.style.display === 'none';
+  el.style.display = hidden ? 'flex' : 'none';
+  if (hidden) el.style.flexDirection = 'column';
+  arrow.textContent = hidden ? '▾' : '▸';
+}
+
+function renderHomeByLocal(locations) {
+  const q = homeSearch.toLowerCase();
+  const filteredLocs = q ? locations.filter(l => l.toLowerCase().includes(q) || books.filter(b=>b.shelf===l).some(b=>b.title.toLowerCase().includes(q))) : locations;
+  const noLocation = books.filter(b => !b.shelf);
+
+  if (!filteredLocs.length && noLocation.length === 0) {
+    return `<div class="empty"><div class="empty-icon">📍</div>Adicione locais nos livros para usar esta busca!<br><br><button class="btn btn-gold" onclick="switchTab('shelf')" style="margin-top:8px">Ir para Estante</button></div>`;
+  }
+
+  let html = '';
+  for (const loc of filteredLocs) {
+    const key = loc.replace(/[\s/]/g,'_');
+    const booksHere = q ? books.filter(b => b.shelf===loc && (b.title.toLowerCase().includes(q)||loc.toLowerCase().includes(q))) : books.filter(b=>b.shelf===loc);
+    const loanedHere = booksHere.filter(b=>isLoaned(b.id)).length;
+    const locPhoto = getShelfPhoto(loc);
+    html += `<div style="margin-bottom:14px">
+      <div style="border-radius:8px;border:1px solid rgba(74,122,204,0.2);overflow:hidden;cursor:pointer" onclick="toggleLocation('${loc}')">
+        ${locPhoto ? `<div style="position:relative"><img src="${locPhoto}" style="width:100%;height:100px;object-fit:cover;display:block"><div style="position:absolute;inset:0;background:linear-gradient(to top,rgba(10,15,40,0.85) 0%,transparent 60%)"></div><div style="position:absolute;bottom:0;left:0;right:0;padding:8px 14px;display:flex;align-items:flex-end;justify-content:space-between"><div><div style="font-size:14px;font-weight:bold;color:#fff">${loc}</div><div style="font-size:11px;color:rgba(255,255,255,0.7)">${booksHere.length} livro${booksHere.length!==1?'s':''}${loanedHere>0?' · <span style="color:#f4a0a0">'+loanedHere+' emprestado'+(loanedHere>1?'s':'')+'</span>':''}</div></div><span style="color:rgba(255,255,255,0.7);font-size:16px" id="loc-arrow-${key}">▾</span></div></div>` :
+        `<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px;background:rgba(74,122,204,0.1)"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:20px">${getLocationIcon(loc)}</span><div><div style="font-size:14px;font-weight:bold;color:var(--gold)">${loc}</div><div style="font-size:11px;color:var(--muted)">${booksHere.length} livro${booksHere.length!==1?'s':''}${loanedHere>0?' · <span style="color:#c47a7a">'+loanedHere+' emprestado'+(loanedHere>1?'s':'')+'</span>':''}</div></div></div><span style="color:var(--muted);font-size:16px" id="loc-arrow-${key}">▾</span></div>`}
+      </div>
+      <div id="loc-books-${key}" style="display:flex;flex-direction:column;gap:8px;margin-top:8px;padding-left:4px">
+        ${booksHere.map(book => {
+          const loaned = isLoaned(book.id);
+          const loan = activeLoan(book.id);
+          const sc = loaned ? '#8B4A4A' : (STATUS_COLORS[book.status]||'#5a6a8a');
+          return `<div style="background:var(--bg3);border:1px solid rgba(74,122,204,0.1);border-left:3px solid ${sc};border-radius:6px;padding:10px 12px;display:flex;gap:10px;align-items:center">
+            ${coverHTML(book, 38, 50)}
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:bold;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${book.title}</div>
+              <div style="font-size:11px;color:var(--sub)">${book.author}</div>
+              ${book.shelfRow||book.shelfPos ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">${[book.shelfRow,book.shelfPos].filter(Boolean).join(' · ')}</div>` : ''}
+              ${loaned && loan ? `<div style="font-size:11px;color:#c47a7a;margin-top:3px">📤 ${loan.borrower}</div>` : `<div style="font-size:10px;color:var(--muted);margin-top:1px">${book.status}</div>`}
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>`;
+  }
+  if (!q && noLocation.length) {
+    html += `<div style="padding:10px 14px;background:rgba(255,255,255,0.03);border-radius:8px;border:1px solid rgba(255,255,255,0.07)"><div style="font-size:12px;color:var(--muted)">📦 Sem local definido: ${noLocation.length} livro${noLocation.length!==1?'s':''}</div></div>`;
+  }
+  return html;
+}
+
+// ═══════════════════════════════════════════
+// FILTER BOOKS
+// ═══════════════════════════════════════════
+function filteredBooks() {
+  return books
+    .filter(b => { const q=search.toLowerCase(); return !q||b.title.toLowerCase().includes(q)||b.author.toLowerCase().includes(q); })
+    .filter(b => filterStatus==='Todos'||b.status===filterStatus)
+    .filter(b => filterGenre==='Todos'||b.genre===filterGenre)
+    .filter(b => filterAvail==='Todos'||(filterAvail==='Disponível'?!isLoaned(b.id):isLoaned(b.id)))
+    .sort((a,b) => {
+      if(sortBy==='title') return a.title.localeCompare(b.title);
+      if(sortBy==='author') return a.author.localeCompare(b.author);
+      if(sortBy==='rating') return b.rating-a.rating;
+      return new Date(b.dateAdded)-new Date(a.dateAdded);
+    });
+}
+
+function filtersHTML() {
+  return `
+  <div class="filters">
+    <input class="filter-input" placeholder="🔍 Título ou autor..." value="${search}" oninput="search=this.value;render()">
+    <select class="filter-select" onchange="filterStatus=this.value;render()">
+      <option ${filterStatus==='Todos'?'selected':''}>Todos</option>
+      <option ${filterStatus==='Quero Ler'?'selected':''}>Quero Ler</option>
+      <option ${filterStatus==='Lendo'?'selected':''}>Lendo</option>
+      <option ${filterStatus==='Lido'?'selected':''}>Lido</option>
+      <option ${filterStatus==='Pausado'?'selected':''}>Pausado</option>
+    </select>
+    <select class="filter-select" onchange="filterAvail=this.value;render()">
+      <option ${filterAvail==='Todos'?'selected':''}>Todos</option>
+      <option ${filterAvail==='Disponível'?'selected':''}>Disponível</option>
+      <option ${filterAvail==='Emprestado'?'selected':''}>Emprestado</option>
+    </select>
+    <select class="filter-select" onchange="sortBy=this.value;render()">
+      <option value="dateAdded" ${sortBy==='dateAdded'?'selected':''}>📅 Data</option>
+      <option value="title" ${sortBy==='title'?'selected':''}>🔤 Título</option>
+      <option value="author" ${sortBy==='author'?'selected':''}>👤 Autor</option>
+      <option value="rating" ${sortBy==='rating'?'selected':''}>⭐ Nota</option>
+    </select>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════
+// SHELF VIEW
+// ═══════════════════════════════════════════
+function renderShelf() {
+  const fb = filteredBooks();
+  const el = document.getElementById('view-shelf');
+  if (!fb.length) { el.innerHTML = filtersHTML() + `<div class="shelf-grid"><div class="empty"><div class="empty-icon">📭</div>Nenhum livro encontrado</div></div>`; return; }
+  el.innerHTML = filtersHTML() + `<div class="shelf-grid">${fb.map(book => shelfCard(book)).join('')}</div>`;
+}
+
+function shelfCard(book) {
+  const loaned = isLoaned(book.id);
+  const loan = activeLoan(book.id);
+  const exp = expandedBook === book.id;
+  const statusColor = loaned ? '#8B4A4A' : (STATUS_COLORS[book.status]||'#5a6a8a');
+  let expHTML = '';
+  if (exp) {
+    expHTML = `<div class="card-expanded">
+      <div class="card-meta">${book.genre}${book.year?' · '+book.year:''}</div>
+      ${(book.shelf||book.shelfRow||book.shelfPos) ? `<div style="display:flex;align-items:flex-start;gap:8px;margin-bottom:6px">
+        ${(()=>{const p=getShelfPhoto(book.shelf);return p?`<img src="${p}" style="width:54px;height:40px;object-fit:cover;border-radius:4px;border:1px solid rgba(74,122,204,0.3);flex-shrink:0">`:'';})()}
+        <div style="font-size:11px;color:var(--sub);line-height:1.7">
+          ${book.shelf?`📚 <strong>${book.shelf}</strong>`:''}
+          ${book.shelfRow?`<br>🗂 ${book.shelfRow}`:''}
+          ${book.shelfPos?`<br>📍 ${book.shelfPos}`:''}
+        </div>
+      </div>` : ''}
+      ${loaned && loan ? `<div class="loan-info">📤 <strong>${loan.borrower}</strong><br>desde ${fmtDate(loan.loanDate)}${loan.expectedReturn?'<br>até '+fmtDate(loan.expectedReturn):''}</div>` : ''}
+      ${book.notes ? `<div class="card-notes">"${book.notes}"</div>` : ''}
+      ${book.review ? `<div style="background:rgba(74,122,204,0.07);border-left:3px solid rgba(74,122,204,0.4);border-radius:0 6px 6px 0;padding:8px 10px;margin-bottom:8px;font-size:10px;color:var(--sub);font-style:italic;line-height:1.6;cursor:pointer" onclick="event.stopPropagation();openReviewModal('${book.id}')">📝 <strong style="font-style:normal;color:var(--gold)">Resenha:</strong> ${book.review.length>120?book.review.substring(0,120)+'…':book.review}</div>` : ''}
+      <div class="card-actions">
+        <button class="btn btn-gold" onclick="event.stopPropagation();openBookModal('${book.id}')">✏</button>
+        <button class="btn" style="background:rgba(74,122,204,0.12);color:var(--gold);border:1px solid rgba(74,122,204,0.25);font-size:11px" onclick="event.stopPropagation();openReviewModal('${book.id}')">📝${book.review?' Editar':'Resenha'}</button>
+        ${!loaned ? `<button class="btn btn-green" onclick="event.stopPropagation();openLoanModal('${book.id}')">📤 Emprestar</button>` : ''}
+        ${loaned && loan ? `<button class="btn btn-blue" onclick="event.stopPropagation();markReturned('${loan.id}')">✅ Devolvido</button>` : ''}
+        <button class="btn btn-red" onclick="event.stopPropagation();deleteBook('${book.id}')">🗑</button>
+      </div>
+    </div>`;
+  }
+  return `
+  <div class="book-card${exp?' expanded':''}" onclick="toggleExpand('${book.id}')">
+    <div class="card-stripe" style="background:${statusColor}"></div>
+    ${loaned ? `<div class="loan-badge">EMPRESTADO</div>` : ''}
+    <div style="padding:10px;display:flex;flex-direction:column;align-items:center;gap:8px">
+      ${coverHTML(book, 110, 147)}
+      <div style="width:100%;text-align:center">
+        <div class="card-title">${book.title}</div>
+        <div class="card-author">${book.author}</div>
+        <div>${tagHTML(loaned?'Emprestado':book.status, statusColor)}</div>
+        ${book.rating>0?`<div style="margin-top:4px;display:flex;justify-content:center">${starsHTML(book.rating,true)}</div>`:''}
+      </div>
+      ${expHTML}
+    </div>
+  </div>`;
+}
+
+function toggleExpand(id) { expandedBook = expandedBook===id ? null : id; render(); }
+
+// ═══════════════════════════════════════════
+// LIST VIEW
+// ═══════════════════════════════════════════
+function renderList() {
+  const fb = filteredBooks();
+  const el = document.getElementById('view-list');
+  if (!fb.length) { el.innerHTML = filtersHTML() + `<div class="empty"><div class="empty-icon">📭</div>Nenhum livro encontrado</div>`; return; }
+  el.innerHTML = filtersHTML() + fb.map(book => {
+    const loaned = isLoaned(book.id);
+    const loan = activeLoan(book.id);
+    const sc = loaned ? '#8B4A4A' : (STATUS_COLORS[book.status]||'#5a6a8a');
+    return `<div class="list-item" style="border-left-color:${sc}">
+      ${coverHTML(book,42,56)}
+      <div class="list-info">
+        <div class="list-title">${book.title}</div>
+        <div class="list-sub">${book.author} · ${book.genre}${book.year?' · '+book.year:''}</div>
+        ${book.shelf||book.shelfRow||book.shelfPos ? `<div style="font-size:10px;color:var(--muted);margin-top:2px">📚 ${[book.shelf,book.shelfRow,book.shelfPos].filter(Boolean).join(' · ')}</div>` : ''}
+        ${loaned&&loan?`<div class="list-loan">📤 <strong>${loan.borrower}</strong> · ${fmtDate(loan.loanDate)}${loan.expectedReturn?' → até '+fmtDate(loan.expectedReturn):''}</div>`:''}
+        ${book.rating>0?`<div style="margin-top:3px">${starsHTML(book.rating,true)}</div>`:''}
+      </div>
+      <div class="list-actions">
+        <button class="btn btn-gold" onclick="openBookModal('${book.id}')">✏</button>
+        <button class="btn" style="background:rgba(74,122,204,0.12);color:var(--gold);border:1px solid rgba(74,122,204,0.25);font-size:11px" onclick="openReviewModal('${book.id}')" title="${book.review?'Ver/Editar Resenha':'Adicionar Resenha'}">${book.review?'📝':'📝'}</button>
+        ${!loaned?`<button class="btn btn-green" onclick="openLoanModal('${book.id}')">📤</button>`:loan?`<button class="btn btn-blue" onclick="markReturned('${loan.id}')">✅</button>`:''}
+        <button class="btn btn-red" onclick="deleteBook('${book.id}')">🗑</button>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+// ═══════════════════════════════════════════
+// LOANS VIEW
+// ═══════════════════════════════════════════
+function renderLoans() {
+  const el = document.getElementById('view-loans');
+  const al = activeLoans();
+  const rl = loans.filter(l => l.returned);
+  let html = `<div class="loans-header">
+    <div>
+      <div style="font-size:16px;font-weight:bold;color:var(--gold)">Controle de Empréstimos</div>
+      <div style="font-size:12px;color:var(--muted);margin-top:2px">${al.length} em aberto${overdueLoans().length>0?` · <span style="color:#c47a7a">⚠ ${overdueLoans().length} em atraso</span>`:''}</div>
+    </div>
+    <button class="btn btn-solid-green" onclick="openLoanModal()">+ Empréstimo</button>
+  </div>`;
+
+  if (al.length) {
+    html += `<div class="section-label" style="margin-top:0">Em aberto</div>`;
+    html += al.map(loan => {
+      const book = bookById(loan.bookId);
+      const ov = isOverdue(loan);
+      return `<div class="loan-card${ov?' overdue':''}">
+        ${book?coverHTML(book,42,56):''}
+        <div class="loan-card-info">
+          <div class="loan-book-title">${book?.title||'Livro removido'}</div>
+          <div class="loan-person">👤 <strong>${loan.borrower}</strong>${loan.phone?` · 📞 ${loan.phone}`:''}</div>
+          <div class="loan-dates">📅 ${fmtDate(loan.loanDate)}${loan.expectedReturn?` · <span style="color:${ov?'#c47a7a':'inherit'}">${ov?'⚠ Até':'Até'} ${fmtDate(loan.expectedReturn)}</span>`:''}</div>
+          ${loan.notes?`<div class="loan-note">💬 ${loan.notes}</div>`:''}
+        </div>
+        <div class="loan-actions">
+          ${ov?`<span class="overdue-tag">ATRASADO</span>`:''}
+          <button class="btn btn-green" onclick="markReturned('${loan.id}')">✅ Devolvido</button>
+          <button class="btn btn-gold" onclick="openLoanModal(null,'${loan.id}')">✏ Editar</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  if (rl.length) {
+    html += `<div class="section-label">Histórico</div>`;
+    html += rl.map(loan => {
+      const book = bookById(loan.bookId);
+      return `<div class="returned-card">
+        ${book?coverHTML(book,36,48):''}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;color:var(--sub)">${book?.title||'Livro removido'}</div>
+          <div style="font-size:11px;color:var(--muted);margin-top:2px">👤 ${loan.borrower} · ${fmtDate(loan.loanDate)} → ${fmtDate(loan.returnDate)}</div>
+        </div>
+        <span style="font-size:10px;padding:2px 8px;border-radius:3px;background:rgba(107,142,107,0.15);color:var(--green)">✅ Devolvido</span>
+        <button class="btn btn-red" onclick="deleteLoan('${loan.id}')">🗑</button>
+      </div>`;
+    }).join('');
+  }
+
+  if (!loans.length) html += `<div class="empty"><div class="empty-icon">🤝</div>Nenhum empréstimo ainda</div>`;
+  el.innerHTML = html;
+}
+
+// ═══════════════════════════════════════════
+// STATS VIEW
+// ═══════════════════════════════════════════
+function renderStats() {
+  const el = document.getElementById('view-stats');
+  const lido = books.filter(b=>b.status==='Lido').length;
+  const lendo = books.filter(b=>b.status==='Lendo').length;
+  const emp = activeLoans().length;
+  const atr = overdueLoans().length;
+  const rated = books.filter(b=>b.rating>0);
+  const avg = rated.length ? (rated.reduce((s,b)=>s+b.rating,0)/rated.length).toFixed(1) : '—';
+  const statusOpts = ['Quero Ler','Lendo','Lido','Pausado'];
+  const genreCounts = {};
+  books.forEach(b => genreCounts[b.genre]=(genreCounts[b.genre]||0)+1);
+
+  // Most borrowed book
+  const loanCounts = {};
+  loans.forEach(l => loanCounts[l.bookId] = (loanCounts[l.bookId]||0)+1);
+  const mostBorrowedId = Object.entries(loanCounts).sort((a,b)=>b[1]-a[1])[0];
+  const mostBorrowed = mostBorrowedId ? bookById(Number(mostBorrowedId[0])) : null;
+  const mostBorrowedCount = mostBorrowedId ? mostBorrowedId[1] : 0;
+
+  // Most read genre
+  const topGenre = Object.entries(genreCounts).sort((a,b)=>b[1]-a[1])[0];
+
+  // Books with covers count
+  const withCovers = books.filter(b=>b.cover).length;
+
+  el.innerHTML = `
+  <!-- HERO COUNTER -->
+  <div style="background:linear-gradient(135deg,#0d1a4a,#1a2e6a);border:1px solid rgba(74,122,204,0.3);border-radius:12px;padding:22px;margin-bottom:14px;text-align:center">
+    <div style="font-size:56px;font-weight:bold;color:var(--gold);line-height:1">${books.length}</div>
+    <div style="font-size:14px;color:var(--sub);margin-top:6px;letter-spacing:0.05em">livro${books.length!==1?'s':''} na biblioteca</div>
+    <div style="display:flex;justify-content:center;gap:20px;margin-top:16px;flex-wrap:wrap">
+      <div style="text-align:center"><div style="font-size:22px;font-weight:bold;color:#6B8E6B">${lido}</div><div style="font-size:10px;color:var(--muted)">Lidos</div></div>
+      <div style="text-align:center"><div style="font-size:22px;font-weight:bold;color:#5B9BD5">${lendo}</div><div style="font-size:10px;color:var(--muted)">Lendo</div></div>
+      <div style="text-align:center"><div style="font-size:22px;font-weight:bold;color:#c47a7a">${emp}</div><div style="font-size:10px;color:var(--muted)">Emprestados</div></div>
+      <div style="text-align:center"><div style="font-size:22px;font-weight:bold;color:var(--gold)">${avg}${avg!=='—'?' ★':''}</div><div style="font-size:10px;color:var(--muted)">Média</div></div>
+    </div>
+  </div>
+
+  <!-- MOST BORROWED -->
+  ${mostBorrowed ? `
+  <div style="background:var(--bg3);border:1px solid rgba(74,122,204,0.15);border-radius:8px;padding:16px;margin-bottom:14px;display:flex;gap:14px;align-items:center">
+    ${coverHTML(mostBorrowed, 52, 70)}
+    <div style="flex:1;min-width:0">
+      <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px">📤 Livro mais emprestado</div>
+      <div style="font-size:14px;font-weight:bold;color:var(--text)">${mostBorrowed.title}</div>
+      <div style="font-size:12px;color:var(--sub);margin-top:2px">${mostBorrowed.author}</div>
+      <div style="font-size:12px;color:var(--gold);margin-top:4px">Emprestado <strong>${mostBorrowedCount}x</strong> no total</div>
+    </div>
+  </div>` : ''}
+
+  <!-- TOP RATED -->
+  ${rated.length ? (() => {
+    const top = [...books].filter(b=>b.rating===5);
+    const show = top[0];
+    return show ? `
+    <div style="background:var(--bg3);border:1px solid rgba(74,122,204,0.15);border-radius:8px;padding:16px;margin-bottom:14px;display:flex;gap:14px;align-items:center">
+      ${coverHTML(show, 52, 70)}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:4px">⭐ Melhor avaliado</div>
+        <div style="font-size:14px;font-weight:bold;color:var(--text)">${show.title}</div>
+        <div style="font-size:12px;color:var(--sub);margin-top:2px">${show.author}</div>
+        <div style="margin-top:4px">${starsHTML(show.rating, true)}</div>
+      </div>
+    </div>` : '';
+  })() : ''}
+
+  <!-- STATUS BARS -->
+  <div style="background:var(--bg3);border:1px solid rgba(74,122,204,0.15);border-radius:8px;padding:18px;margin-bottom:12px">
+    <div style="font-weight:bold;color:var(--gold);margin-bottom:14px">Status de Leitura</div>
+    ${statusOpts.map(s => {
+      const cnt = books.filter(b=>b.status===s).length;
+      const pct = books.length ? cnt/books.length*100 : 0;
+      return `<div style="margin-bottom:12px">
+        <div style="display:flex;justify-content:space-between;margin-bottom:5px;font-size:12px">
+          <span style="color:${STATUS_COLORS[s]}">${s}</span>
+          <span style="color:var(--muted)">${cnt} livro${cnt!==1?'s':''} (${Math.round(pct)}%)</span>
+        </div>
+        <div class="bar-wrap"><div class="bar-fill" style="width:${pct}%;background:${STATUS_COLORS[s]}"></div></div>
+      </div>`;
+    }).join('')}
+  </div>
+
+  <!-- GENRE -->
+  <div style="background:var(--bg3);border:1px solid rgba(74,122,204,0.15);border-radius:8px;padding:18px">
+    <div style="font-weight:bold;color:var(--gold);margin-bottom:12px">Por Gênero</div>
+    <div style="display:flex;flex-wrap:wrap;gap:8px">
+      ${Object.entries(genreCounts).sort((a,b)=>b[1]-a[1]).map(([g,c])=>
+        `<div style="padding:5px 12px;border-radius:20px;font-size:12px;background:var(--gold2);border:1px solid rgba(74,122,204,0.2);color:var(--gold)">${g} <strong>(${c})</strong></div>`
+      ).join('')}
+    </div>
+  </div>`;
+}
+
+// ═══════════════════════════════════════════
+// BOOK MODAL
+// ═══════════════════════════════════════════
+let editingBookId = null;
+let currentCover = null;
+let currentRating = 0;
+
+function openBookModal(bookId = null) {
+  editingBookId = bookId;
+  currentRating = 0;
+  currentCover = null;
+  document.getElementById('ai-result').innerHTML = '';
+  document.getElementById('book-modal-title').textContent = bookId ? '✏ Editar Livro' : '📖 Adicionar Livro';
+  if (bookId) {
+    const b = bookById(bookId);
+    document.getElementById('f-title').value = b.title;
+    document.getElementById('f-author').value = b.author;
+    document.getElementById('f-genre').value = b.genre;
+    document.getElementById('f-status').value = b.status;
+    document.getElementById('f-year').value = b.year || '';
+    document.getElementById('f-shelf').value = b.shelf || '';
+    document.getElementById('f-shelf-row').value = b.shelfRow || '';
+    document.getElementById('f-shelf-pos').value = b.shelfPos || '';
+    currentShelfPhoto = null; // no change by default
+    updateShelfPhotoPreview();
+    document.getElementById('f-notes').value = b.notes || '';
+    setRating(b.rating || 0);
+    currentCover = b.cover;
+    updateCoverPreview();
+  } else {
+    document.getElementById('f-title').value = '';
+    document.getElementById('f-author').value = '';
+    document.getElementById('f-genre').value = 'Teologia';
+    document.getElementById('f-status').value = 'Quero Ler';
+    document.getElementById('f-year').value = new Date().getFullYear();
+    document.getElementById('f-shelf').value = '';
+    document.getElementById('f-shelf-row').value = '';
+    document.getElementById('f-shelf-pos').value = '';
+    currentShelfPhoto = null;
+    updateShelfPhotoPreview();
+    document.getElementById('f-notes').value = '';
+    setRating(0);
+    updateCoverPreview();
+  }
+  document.getElementById('book-modal').classList.add('open');
+}
+
+function closeBookModal() { document.getElementById('book-modal').classList.remove('open'); }
+
+async function saveBook() {
+  const title = document.getElementById('f-title').value.trim();
+  const author = document.getElementById('f-author').value.trim();
+  if (!title || !author) { alert('Título e autor são obrigatórios!'); return; }
+  const shelfName = document.getElementById('f-shelf').value.trim();
+  const data = {
+    title, author,
+    genre: document.getElementById('f-genre').value,
+    status: document.getElementById('f-status').value,
+    year: parseInt(document.getElementById('f-year').value) || null,
+    shelf: shelfName,
+    shelfRow: document.getElementById('f-shelf-row').value.trim(),
+    shelfPos: document.getElementById('f-shelf-pos').value.trim(),
+    notes: document.getElementById('f-notes').value.trim(),
+    rating: currentRating,
+    cover: currentCover,
+    dateAdded: editingBookId ? bookById(editingBookId).dateAdded : new Date().toISOString().split('T')[0],
+  };
+  // Save shelf photo if new one was set
+  if (currentShelfPhoto !== null && shelfName) {
+    if (currentShelfPhoto) {
+      await saveShelfPhoto(shelfName, currentShelfPhoto);
+    } else {
+      await deleteShelfPhoto(shelfName);
+    }
+  }
+  if (editingBookId) {
+    await updateBook(editingBookId, data);
+    showToast('✅ Livro atualizado!');
+  } else {
+    await addBook(data);
+    showToast('✅ Livro adicionado!');
+  }
+  closeBookModal();
+}
+
+async function deleteBook(id) {
+  if (!confirm('Remover este livro?')) return;
+  await removeBook(id);
+  if (expandedBook===id) expandedBook = null;
+  showToast('🗑 Livro removido');
+}
+
+function setRating(r) {
+  currentRating = r;
+  document.querySelectorAll('#star-rating .star').forEach((s,i) => s.classList.toggle('filled', i<r));
+}
+
+// Cover upload — Base64 com compressão automática
+function triggerCoverUpload() { document.getElementById('cover-input').click(); }
+
+async function handleCoverUpload(input) {
+  const file = input.files[0]; if (!file) return;
+  showToast('⏳ Processando capa...');
+  try {
+    const compressed = await compressImage(file, 800, 0.82);
+    const reader = new FileReader();
+    reader.onload = e => { currentCover = e.target.result; updateCoverPreview(); showToast('✅ Capa pronta!'); };
+    reader.readAsDataURL(compressed);
+  } catch(err) {
+    // Fallback sem compressão
+    const reader = new FileReader();
+    reader.onload = e => { currentCover = e.target.result; updateCoverPreview(); };
+    reader.readAsDataURL(file);
+  }
+}
+
+// Comprimir imagem antes de salvar (mantém tamanho pequeno no Firestore)
+function compressImage(file, maxWidth, quality) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const scale = Math.min(1, maxWidth / img.width);
+      const canvas = document.createElement('canvas');
+      canvas.width = img.width * scale;
+      canvas.height = img.height * scale;
+      canvas.getContext('2d').drawImage(img, 0, 0, canvas.width, canvas.height);
+      canvas.toBlob(blob => resolve(blob), 'image/jpeg', quality);
+      URL.revokeObjectURL(url);
+    };
+    img.src = url;
+  });
+}
+
+function removeCover() { currentCover = null; updateCoverPreview(); }
+
+// ── Shelf Photo ──────────────────────────────
+let currentShelfPhoto = null; // null = no change, '' = remove, 'data:...' = new photo
+
+function triggerShelfPhotoUpload() { document.getElementById('shelf-photo-input').click(); }
+
+async function handleShelfPhotoUpload(input) {
+  const file = input.files[0]; if (!file) return;
+  showToast('⏳ Processando foto da estante...');
+  try {
+    const compressed = await compressImage(file, 1200, 0.80);
+    const reader = new FileReader();
+    reader.onload = e => {
+      currentShelfPhoto = e.target.result;
+      updateShelfPhotoPreview();
+      showToast('✅ Foto da estante pronta!');
+    };
+    reader.readAsDataURL(compressed);
+  } catch(err) {
+    const reader = new FileReader();
+    reader.onload = e => { currentShelfPhoto = e.target.result; updateShelfPhotoPreview(); };
+    reader.readAsDataURL(file);
+  }
+}
+
+function removeShelfPhoto() {
+  currentShelfPhoto = ''; // empty string = signal to delete
+  updateShelfPhotoPreview();
+}
+
+function updateShelfPhotoPreview() {
+  const preview = document.getElementById('shelf-photo-preview');
+  const removeBtn = document.getElementById('btn-remove-shelf-photo');
+  if (!preview) return;
+  // Determine which photo to show: new upload > existing from Firestore
+  const shelfName = document.getElementById('f-shelf')?.value?.trim() || '';
+  let photoSrc = null;
+  if (currentShelfPhoto === null) {
+    // No change — show existing
+    photoSrc = getShelfPhoto(shelfName);
+  } else if (currentShelfPhoto === '') {
+    photoSrc = null; // being removed
+  } else {
+    photoSrc = currentShelfPhoto; // new upload
+  }
+  if (photoSrc) {
+    preview.innerHTML = `<img src="${photoSrc}" style="width:100%;max-height:140px;object-fit:cover;border-radius:8px;border:1px solid rgba(74,122,204,0.3)">`;
+    if (removeBtn) removeBtn.style.display = 'inline-flex';
+  } else {
+    preview.innerHTML = '';
+    if (removeBtn) removeBtn.style.display = 'none';
+  }
+}
+function updateCoverPreview() {
+  const inner = document.getElementById('cover-preview-inner');
+  const removeBtn = document.getElementById('remove-cover-btn');
+  if (currentCover) {
+    inner.innerHTML = `<img src="${currentCover}" style="width:100%;height:100%;object-fit:cover">`;
+    removeBtn.style.display = 'block';
+  } else {
+    inner.innerHTML = `<div class="cover-placeholder">📷</div>`;
+    removeBtn.style.display = 'none';
+  }
+}
+
+// ═══════════════════════════════════════════
+// AI COVER RECOGNITION
+// ═══════════════════════════════════════════
+function triggerCameraCapture() { document.getElementById('ai-camera-input').click(); }
+function triggerGalleryForAI() { document.getElementById('ai-gallery-input').click(); }
+
+async function processAIImage(input) {
+  const file = input.files[0]; if (!file) return;
+  const resultDiv = document.getElementById('ai-result');
+  resultDiv.innerHTML = `<div class="ai-loading">🔍 Analisando a capa com IA...</div>`;
+
+  // Also set as cover — com compressão
+  compressImage(file, 800, 0.82).then(compressed => {
+    const reader = new FileReader();
+    reader.onload = e => { currentCover = e.target.result; updateCoverPreview(); };
+    reader.readAsDataURL(compressed);
+  }).catch(() => {
+    const reader = new FileReader();
+    reader.onload = e => { currentCover = e.target.result; updateCoverPreview(); };
+    reader.readAsDataURL(file);
+  });
+
+  // Read as base64 for API
+  const reader = new FileReader();
+  reader.onload = async (e) => {
+    const base64 = e.target.result.split(',')[1];
+    const mediaType = file.type || 'image/jpeg';
+    try {
+      const response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': typeof getApiKey === 'function' ? getApiKey() : (localStorage.getItem('anthropic_api_key') || ''),
+          'anthropic-version': '2023-06-01',
+          'anthropic-dangerous-direct-browser-access': 'true'
+        },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-20250514',
+          max_tokens: 300,
+          messages: [{
+            role: 'user',
+            content: [
+              { type: 'image', source: { type: 'base64', media_type: mediaType, data: base64 } },
+              { type: 'text', text: 'Esta é a capa de um livro. Identifique e responda SOMENTE em JSON válido, sem markdown, sem texto extra: {"title": "título do livro", "author": "nome do autor", "year": ano_de_publicacao_ou_null, "genre": "gênero mais provável entre: Teologia, Romance, Ficção Científica, Fantasia, Terror, Mistério, Biografia, História, Autoajuda, Técnico, Poesia, Outro"}' }
+            ]
+          }]
+        })
+      });
+      const data = await response.json();
+      const text = data.content?.map(c=>c.text||'').join('') || '';
+      const clean = text.replace(/```json|```/g,'').trim();
+      const info = JSON.parse(clean);
+      if (info.title) document.getElementById('f-title').value = info.title;
+      if (info.author) document.getElementById('f-author').value = info.author;
+      if (info.year) document.getElementById('f-year').value = info.year;
+      if (info.genre) document.getElementById('f-genre').value = info.genre;
+      resultDiv.innerHTML = `<div class="ai-result">✅ <strong>IA identificou:</strong><br>📖 ${info.title||'?'}<br>✍️ ${info.author||'?'}${info.year?`<br>📅 ${info.year}`:''}${info.genre?`<br>🏷 ${info.genre}`:''}<br><span style="font-size:10px;color:var(--muted)">Confira e ajuste se necessário</span></div>`;
+    } catch(err) {
+      resultDiv.innerHTML = `<div class="ai-result" style="border-color:rgba(139,74,74,0.3);background:rgba(139,74,74,0.1);color:#c47a7a">⚠️ Não foi possível reconhecer automaticamente. Preencha manualmente.</div>`;
+      console.error(err);
+    }
+  };
+  reader.readAsDataURL(file);
+  input.value = '';
+}
+
+// ═══════════════════════════════════════════
+// REVIEW MODAL
+// ═══════════════════════════════════════════
+let reviewingBookId = null;
+
+function openReviewModal(bookId) {
+  reviewingBookId = bookId;
+  const book = bookById(bookId);
+  if (!book) return;
+  // Book info header
+  document.getElementById('review-book-info').innerHTML = `
+    ${coverHTML(book, 40, 54)}
+    <div style="flex:1;min-width:0">
+      <div style="font-size:14px;font-weight:bold;color:var(--text)">${book.title}</div>
+      <div style="font-size:12px;color:var(--sub);margin-top:2px">${book.author}</div>
+      ${book.rating>0?`<div style="margin-top:4px">${starsHTML(book.rating,true)}</div>`:''}
+    </div>`;
+  // Load existing review
+  const review = book.review || '';
+  const reviewDate = book.reviewDate || '';
+  document.getElementById('review-text').value = review;
+  document.getElementById('review-date').textContent = reviewDate ? `Última edição: ${fmtDate(reviewDate)}` : '';
+  document.getElementById('review-modal').classList.add('open');
+}
+
+function closeReviewModal() {
+  document.getElementById('review-modal').classList.remove('open');
+}
+
+async function saveReview() {
+  const text = document.getElementById('review-text').value.trim();
+  const today = new Date().toISOString().split('T')[0];
+  await updateBook(reviewingBookId, { review: text, reviewDate: text ? today : null });
+  showToast(text ? '📝 Resenha salva!' : '🗑 Resenha removida');
+  closeReviewModal();
+}
+
+// ═══════════════════════════════════════════
+// LOAN MODAL
+// ═══════════════════════════════════════════
+let editingLoanId = null;
+
+function openLoanModal(bookId = null, loanId = null) {
+  editingLoanId = loanId;
+  document.getElementById('loan-modal-title').textContent = loanId ? '✏ Editar Empréstimo' : '📤 Registrar Empréstimo';
+  // Populate book select (only available books or current book)
+  const sel = document.getElementById('lf-book');
+  sel.innerHTML = '<option value="">Selecione um livro...</option>' +
+    books.filter(b => !isLoaned(b.id) || b.id === (loanId ? loans.find(l=>l.id===loanId)?.bookId : bookId))
+      .map(b => `<option value="${b.id}">${b.title} — ${b.author}</option>`).join('');
+  if (loanId) {
+    const l = loans.find(lo=>lo.id===loanId);
+    sel.value = l.bookId;
+    document.getElementById('lf-borrower').value = l.borrower;
+    document.getElementById('lf-phone').value = l.phone||'';
+    document.getElementById('lf-date').value = l.loanDate;
+    document.getElementById('lf-return').value = l.expectedReturn||'';
+    document.getElementById('lf-notes').value = l.notes||'';
+  } else {
+    if (bookId) sel.value = bookId;
+    document.getElementById('lf-borrower').value = '';
+    document.getElementById('lf-phone').value = '';
+    document.getElementById('lf-date').value = new Date().toISOString().split('T')[0];
+    document.getElementById('lf-return').value = '';
+    document.getElementById('lf-notes').value = '';
+  }
+  document.getElementById('loan-modal').classList.add('open');
+}
+
+function closeLoanModal() { document.getElementById('loan-modal').classList.remove('open'); }
+
+async function saveLoan() {
+  const bookId = document.getElementById('lf-book').value;
+  const borrower = document.getElementById('lf-borrower').value.trim();
+  if (!bookId || !borrower) { alert('Livro e nome são obrigatórios!'); return; }
+  const data = {
+    bookId,
+    borrower,
+    phone: document.getElementById('lf-phone').value.trim(),
+    loanDate: document.getElementById('lf-date').value,
+    expectedReturn: document.getElementById('lf-return').value || null,
+    notes: document.getElementById('lf-notes').value.trim(),
+    returned: editingLoanId ? loans.find(l=>l.id===editingLoanId).returned : false,
+    returnDate: editingLoanId ? loans.find(l=>l.id===editingLoanId).returnDate : null,
+  };
+  if (editingLoanId) {
+    await updateLoan(editingLoanId, data);
+    showToast('✅ Empréstimo atualizado!');
+  } else {
+    await addLoan(data);
+    showToast('✅ Empréstimo registrado!');
+  }
+  closeLoanModal();
+}
+
+async function markReturned(loanId) {
+  await updateLoan(loanId, { returned: true, returnDate: new Date().toISOString().split('T')[0] });
+  showToast('✅ Marcado como devolvido!');
+}
+
+async function deleteLoan(id) {
+  if (!confirm('Remover este registro?')) return;
+  await removeLoan(id);
+  showToast('🗑 Registro removido');
+}
+
+// ═══════════════════════════════════════════
+// PWA INSTALL
+// ═══════════════════════════════════════════
+let deferredPrompt = null;
+
+function showInstallBtn() {
+  const btn = document.getElementById('install-btn');
+  if (btn && !window.matchMedia('(display-mode: standalone)').matches && !window.navigator.standalone) {
+    btn.style.display = 'block';
+  }
+}
+
+window.addEventListener('beforeinstallprompt', e => {
+  e.preventDefault();
+  deferredPrompt = e;
+  showInstallBtn();
+  // Also show top banner after 1.5s
+  setTimeout(() => {
+    if (!window.matchMedia('(display-mode: standalone)').matches) {
+      document.getElementById('install-banner').classList.add('show');
+    }
+  }, 1500);
+});
+
+async function triggerInstall() {
+  if (deferredPrompt) {
+    deferredPrompt.prompt();
+    const result = await deferredPrompt.userChoice;
+    deferredPrompt = null;
+    if (result.outcome === 'accepted') {
+      document.getElementById('install-btn').style.display = 'none';
+      document.getElementById('install-banner').classList.remove('show');
+    }
+  } else if (/iphone|ipad|ipod/i.test(navigator.userAgent)) {
+    document.getElementById('ios-hint').classList.add('show');
+  } else {
+    // Android Chrome — show manual install instructions
+    showToast('⬆️ Toque nos 3 pontinhos → "Adicionar à tela inicial"');
+  }
+}
+
+document.getElementById('btn-banner-close').addEventListener('click', () => {
+  document.getElementById('install-banner').classList.remove('show');
+});
+
+// iOS detection
+const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+
+if (isIOS && !isStandalone) {
+  // Show install button for iOS always
+  showInstallBtn();
+  setTimeout(() => {
+    document.getElementById('ios-hint').classList.add('show');
+  }, 2000);
+}
+
+document.getElementById('btn-ios-close').addEventListener('click', () => {
+  document.getElementById('ios-hint').classList.remove('show');
+});
+
+// Close modals on overlay click
+document.getElementById('book-modal').addEventListener('click', e => { if(e.target===e.currentTarget) closeBookModal(); });
+document.getElementById('loan-modal').addEventListener('click', e => { if(e.target===e.currentTarget) closeLoanModal(); });
+document.getElementById('review-modal').addEventListener('click', e => { if(e.target===e.currentTarget) closeReviewModal(); });
+
+// Service Worker
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.register('./sw.js').catch(console.warn);
+}
+
+// ═══════════════════════════════════════════
+// ALERT & NOTIFICATION SYSTEM
+// ═══════════════════════════════════════════
+
+function getAlerts() {
+  const today = new Date(); today.setHours(0,0,0,0);
+  const alerts = [];
+
+  loans.filter(l => !l.returned).forEach(loan => {
+    const book = bookById(loan.bookId);
+    const name = book?.title || 'Livro desconhecido';
+    const borrower = loan.borrower;
+    const phone = loan.phone || '';
+
+    if (loan.expectedReturn) {
+      const dueDate = new Date(loan.expectedReturn + 'T00:00:00');
+      const diffDays = Math.round((dueDate - today) / (1000*60*60*24));
+      if (diffDays < 0) {
+        const daysLate = Math.abs(diffDays);
+        alerts.push({
+          type: 'overdue', severity: 'error', loan, book,
+          title: `⚠️ Atrasado há ${daysLate} dia${daysLate>1?'s':''}`,
+          sub: `"${name}" emprestado para <strong>${borrower}</strong> venceu em ${fmtDate(loan.expectedReturn)}.`,
+          phone,
+          msg: `Olá ${borrower}! 😊 Tudo bem? Passando para lembrar que o livro *"${name}"* que você pegou emprestado já passou do prazo de devolução (${fmtDate(loan.expectedReturn)}). Quando puder me devolver? Muito obrigado! 🙏`,
+        });
+      }
+    } else {
+      // No due date — alert after 15 days
+      const loanDate = new Date(loan.loanDate + 'T00:00:00');
+      const daysSince = Math.round((today - loanDate) / (1000*60*60*24));
+      if (daysSince >= 15) {
+        alerts.push({
+          type: 'nodate', severity: 'info', loan, book,
+          title: `📖 Emprestado há ${daysSince} dias sem prazo`,
+          sub: `"${name}" está com <strong>${borrower}</strong> desde ${fmtDate(loan.loanDate)} sem prazo definido.`,
+          phone,
+          msg: `Olá ${borrower}! 😊 Tudo bem? O livro *"${name}"* está com você há ${daysSince} dias. Quando puder devolver, fico aguardando! Obrigado! 🙏`,
+        });
+      }
+    }
+  });
+
+  // Sort: overdue first, then today, then soon, then no-date
+  const order = {overdue:0, today:1, soon:2, nodate:3};
+  return alerts.sort((a,b) => order[a.type] - order[b.type]);
+}
+
+function updateAlertBadge() {
+  const alerts = getAlerts();
+  const badge = document.getElementById('alert-badge');
+  const btn = document.getElementById('notif-btn');
+  if (alerts.length > 0) {
+    badge.textContent = alerts.length > 9 ? '9+' : alerts.length;
+    badge.style.display = 'flex';
+    // Pulse animation for urgent alerts
+    const hasUrgent = alerts.some(a => a.severity === 'error');
+    btn.style.animation = hasUrgent ? 'pulse 2s infinite' : 'none';
+  } else {
+    badge.style.display = 'none';
+    btn.style.animation = 'none';
+  }
+}
+
+function openAlertPanel() {
+  const alerts = getAlerts();
+  const list = document.getElementById('alert-list');
+
+  if (!alerts.length) {
+    list.innerHTML = `<div style="text-align:center;padding:40px 20px;color:var(--muted)">
+      <div style="font-size:44px;margin-bottom:12px">✅</div>
+      <div style="font-size:14px">Nenhum alerta no momento!</div>
+      <div style="font-size:12px;margin-top:6px">Todos os empréstimos estão em dia.</div>
+    </div>`;
+  } else {
+    list.innerHTML = alerts.map((a, i) => {
+      const borderColor = a.severity==='error'?'#e05555':a.severity==='warning'?'#d48c2a':'#4A7ACC';
+      const hasPhone = a.phone && a.phone.trim();
+      const waPhone = a.phone ? a.phone.replace(/\D/g,'') : '';
+      const waLink = hasPhone ? `https://wa.me/55${waPhone}?text=${encodeURIComponent(a.msg)}` : '';
+      return `<div class="alert-item ${a.severity==='warning'?'warning':a.severity==='info'?'info':''}" style="border-left-color:${borderColor}">
+        <div class="alert-item-title">${a.title}</div>
+        <div class="alert-item-sub">${a.sub}${a.phone?`<br>📞 ${a.phone}`:''}</div>
+        <div class="alert-item-actions">
+          <button class="btn btn-gold" onclick="copyMsg(${i})" style="font-size:11px">📋 Copiar mensagem</button>
+          ${hasPhone ? `<a href="${waLink}" target="_blank" style="text-decoration:none"><button class="btn btn-green" style="font-size:11px">💬 WhatsApp</button></a>` : ''}
+          <button class="btn" style="font-size:11px;background:rgba(139,74,74,0.2);color:#c47a7a;border:1px solid rgba(139,74,74,0.3)" onclick="markReturned('${a.loan.id}');closeAlertPanel()">✅ Devolvido</button>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  // Store alerts for copy function
+  window._currentAlerts = alerts;
+  document.getElementById('alert-panel').classList.add('open');
+}
+
+function closeAlertPanel() {
+  document.getElementById('alert-panel').classList.remove('open');
+}
+
+function copyMsg(idx) {
+  const msg = window._currentAlerts?.[idx]?.msg || '';
+  if (navigator.clipboard) {
+    navigator.clipboard.writeText(msg).then(() => showToast('📋 Mensagem copiada!'));
+  } else {
+    const ta = document.createElement('textarea');
+    ta.value = msg; document.body.appendChild(ta);
+    ta.select(); document.execCommand('copy');
+    document.body.removeChild(ta);
+    showToast('📋 Mensagem copiada!');
+  }
+}
+
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2500);
+}
+
+// Schedule daily check
+function scheduleDailyCheck() {
+  setTimeout(() => { updateAlertBadge(); }, 1500);
+  setInterval(() => { updateAlertBadge(); }, 60 * 60 * 1000);
+}
+
+// Close alert panel on overlay click
+document.getElementById('alert-panel').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeAlertPanel();
+});
+
+// Add pulse keyframe dynamically
+const style = document.createElement('style');
+style.textContent = `@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(224,85,85,0.4)}50%{box-shadow:0 0 0 6px rgba(224,85,85,0)}}`;
+document.head.appendChild(style);
+
+// Online/Offline indicator
+function updateStatus() {
+  const el = document.getElementById('status-indicator');
+  if (!el) return;
+  if (navigator.onLine) {
+    el.textContent = 'Online';
+    el.className = 'status-dot status-online';
+  } else {
+    el.textContent = 'Offline';
+    el.className = 'status-dot status-offline';
+  }
+}
+updateStatus();
+window.addEventListener('online', updateStatus);
+window.addEventListener('offline', updateStatus);
+
+// Alert badge schedule
+scheduleDailyCheck();
+</script>
+</body>
+</html>
