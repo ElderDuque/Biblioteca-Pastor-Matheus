@@ -394,10 +394,27 @@
 <div id="ios-hint">
   <div class="ios-hint-handle"></div>
   <div class="ios-hint-header">
-    <div class="ios-hint-title">📱 Instalar no iPhone / iPad</div>
+    <div class="ios-hint-title" id="ios-hint-title">📱 Como Instalar o APP</div>
     <button class="ios-hint-close" id="btn-ios-close">✕</button>
   </div>
-  <div class="ios-steps">
+  <div class="ios-steps" id="ios-steps-android" style="display:none">
+    <div class="ios-step">
+      <div class="ios-step-num">1</div>
+      <div class="ios-step-icon">⋮</div>
+      <div class="ios-step-text">Toque nos <strong>3 pontinhos ⋮</strong> no canto superior direito do navegador</div>
+    </div>
+    <div class="ios-step">
+      <div class="ios-step-num">2</div>
+      <div class="ios-step-icon">➕</div>
+      <div class="ios-step-text">Toque em <strong>"Adicionar à tela inicial"</strong> ou <strong>"Instalar app"</strong></div>
+    </div>
+    <div class="ios-step">
+      <div class="ios-step-num">3</div>
+      <div class="ios-step-icon">✅</div>
+      <div class="ios-step-text">Confirme tocando em <strong>Adicionar</strong> — pronto!</div>
+    </div>
+  </div>
+  <div class="ios-steps" id="ios-steps-ios">
     <div class="ios-step">
       <div class="ios-step-num">1</div>
       <div class="ios-step-icon">⬆️</div>
@@ -1698,81 +1715,83 @@ async function deleteLoan(id) {
 // ═══════════════════════════════════════════
 let deferredPrompt = null;
 
-const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone;
+const isStandalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
 const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent) && !window.MSStream;
-const isAndroid = /android/i.test(navigator.userAgent);
-const BANNER_DISMISSED_KEY = 'install_banner_dismissed';
-const BANNER_COOLDOWN_DAYS = 3; // só mostra de novo após 3 dias
+const BANNER_KEY = 'install_banner_dismissed';
+const COOLDOWN_DAYS = 3;
 
-function wasBannerRecentlyDismissed() {
-  const ts = localStorage.getItem(BANNER_DISMISSED_KEY);
+function bannerDismissed() {
+  const ts = localStorage.getItem(BANNER_KEY);
   if (!ts) return false;
-  const daysSince = (Date.now() - Number(ts)) / (1000 * 60 * 60 * 24);
-  return daysSince < BANNER_COOLDOWN_DAYS;
+  return (Date.now() - Number(ts)) / 86400000 < COOLDOWN_DAYS;
 }
-
-function dismissBanner() {
-  localStorage.setItem(BANNER_DISMISSED_KEY, Date.now());
-}
+function dismissBanner() { localStorage.setItem(BANNER_KEY, Date.now()); }
 
 function showInstallBanner() {
-  if (isStandalone || wasBannerRecentlyDismissed()) return;
+  if (isStandalone || bannerDismissed()) return;
   document.getElementById('install-banner').classList.add('show');
-}
-
-function showInstallBtn() {
   const btn = document.getElementById('install-btn');
-  if (btn && !isStandalone) btn.style.display = 'inline-flex';
+  if (btn) btn.style.display = 'inline-flex';
 }
 
-// Android/Desktop: Chrome dispara o evento
+// Captura o prompt ANTES de mostrar — Chrome pode disparar antes do load
 window.addEventListener('beforeinstallprompt', e => {
   e.preventDefault();
   deferredPrompt = e;
-  showInstallBtn();
-  setTimeout(showInstallBanner, 2000);
+  // Quando o Chrome confirma que é instalável, mostra com prompt nativo
+  setTimeout(showInstallBanner, 1500);
 });
 
-// App instalado com sucesso
+// Instalado com sucesso
 window.addEventListener('appinstalled', () => {
   document.getElementById('install-banner').classList.remove('show');
-  document.getElementById('install-btn').style.display = 'none';
+  const btn = document.getElementById('install-btn');
+  if (btn) btn.style.display = 'none';
   deferredPrompt = null;
   showToast('🎉 APP instalado com sucesso!');
 });
 
 async function triggerInstall() {
   if (deferredPrompt) {
-    // Android Chrome nativo
+    // Chrome Android — prompt nativo
     deferredPrompt.prompt();
-    const result = await deferredPrompt.userChoice;
+    const { outcome } = await deferredPrompt.userChoice;
     deferredPrompt = null;
-    if (result.outcome === 'accepted') {
+    if (outcome === 'accepted') {
       document.getElementById('install-banner').classList.remove('show');
-      document.getElementById('install-btn').style.display = 'none';
     }
-  } else if (isIOS) {
-    // iPhone/iPad: mostra instruções do Safari
-    document.getElementById('install-banner').classList.remove('show');
-    document.getElementById('ios-hint').classList.add('show');
   } else {
-    // Android sem prompt (Samsung Browser, Firefox, etc)
-    showToast('📲 Toque nos 3 pontinhos ⋮ → "Adicionar à tela inicial"');
+    // Sem prompt nativo: mostra instruções manuais
+    document.getElementById('install-banner').classList.remove('show');
+    const hint = document.getElementById('ios-hint');
+    hint.classList.add('show');
+    if (isIOS) {
+      document.getElementById('ios-hint-title').textContent = '📱 Instalar no iPhone / iPad';
+      document.getElementById('ios-steps-ios').style.display = 'flex';
+      document.getElementById('ios-steps-android').style.display = 'none';
+    } else {
+      document.getElementById('ios-hint-title').textContent = '📱 Instalar no Android';
+      document.getElementById('ios-steps-android').style.display = 'flex';
+      document.getElementById('ios-steps-ios').style.display = 'none';
+    }
   }
 }
 
-// Fechar banner
+// ── Mostrar banner SEMPRE após 2s (independente do beforeinstallprompt) ──
+// Isso garante que aparece em qualquer browser Android
+window.addEventListener('load', () => {
+  setTimeout(showInstallBanner, 2000);
+});
+
+// Fechar banner Android
 document.getElementById('btn-banner-close').addEventListener('click', () => {
   document.getElementById('install-banner').classList.remove('show');
   dismissBanner();
 });
 
-// iOS: mostrar banner após 2s se ainda não instalado
+// iOS: mostrar instruções no banner
 if (isIOS && !isStandalone) {
-  showInstallBtn();
-  setTimeout(() => {
-    if (!wasBannerRecentlyDismissed()) showInstallBanner();
-  }, 2000);
+  setTimeout(showInstallBanner, 2000);
 }
 
 // Fechar hint iOS
@@ -1781,12 +1800,10 @@ document.getElementById('btn-ios-close').addEventListener('click', () => {
   dismissBanner();
 });
 
-// Swipe para fechar o banner (arrastar para baixo)
+// Swipe para baixo fecha o banner
 (function() {
   let startY = 0;
-  const banner = document.getElementById('install-banner');
-  const iosBanner = document.getElementById('ios-hint');
-  [banner, iosBanner].forEach(el => {
+  [document.getElementById('install-banner'), document.getElementById('ios-hint')].forEach(el => {
     el.addEventListener('touchstart', e => { startY = e.touches[0].clientY; }, { passive: true });
     el.addEventListener('touchend', e => {
       if (e.changedTouches[0].clientY - startY > 60) {
