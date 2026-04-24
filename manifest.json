@@ -2,8 +2,8 @@
   "name": "Biblioteca do Pastor Matheus",
   "short_name": "Bib. Matheus",
   "description": "Organize e controle sua biblioteca e empréstimos",
-  "start_url": "./index.html",
-  "scope": "./",
+  "start_url": "/Biblioteca-Pastor-Matheus/index.html",
+  "scope": "/Biblioteca-Pastor-Matheus/",
   "display": "standalone",
   "background_color": "#0e1428",
   "theme_color": "#1a2a6e",
@@ -22,7 +22,5 @@
       "type": "image/png",
       "purpose": "any maskable"
     }
-  ],
-  "categories": ["productivity", "utilities"],
-  "screenshots": []
+  ]
 }
